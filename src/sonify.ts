@@ -9,10 +9,28 @@ export const pentatonicScale = [
 ];
 
 export type ZoneVoice = "arctic" | "tropics" | "antarctic";
+export type HitInstrument = "crackle" | "storm" | "volcano" | "ice" | "pluck";
+export type LeadSound = "glass" | "piano" | "pad" | "pluck";
+
+const leadPresets: Record<LeadSound, { harmonicity: number; modulationIndex: number; envelope: [number, number, number, number] }> = {
+  glass: { harmonicity: 2, modulationIndex: 3, envelope: [0.01, 0.3, 0.2, 0.8] },
+  piano: { harmonicity: 1, modulationIndex: 1.2, envelope: [0.005, 0.8, 0.05, 1.2] },
+  pad: { harmonicity: 0.5, modulationIndex: 0.8, envelope: [0.25, 0.4, 0.7, 1.8] },
+  pluck: { harmonicity: 3, modulationIndex: 8, envelope: [0.002, 0.12, 0, 0.2] },
+};
+
+const instrumentForCategory: Record<string, HitInstrument> = {
+  wildfires: "crackle",
+  severeStorms: "storm",
+  volcanoes: "volcano",
+  seaLakeIce: "ice",
+  snow: "ice",
+};
 
 export interface SoundStep {
   notes: string[];
   zoneNotes?: { voice: ZoneVoice; note: string }[];
+  hits?: { instrument: HitInstrument; strength: number; pan: number; note: string }[];
   brightness: number;
   heat: number;
   bassNote?: string;
@@ -66,6 +84,28 @@ export function zoneSteps(points: ClimatePoint[]): SoundStep[] {
   });
 }
 
+export function eventSteps(points: ClimatePoint[]): SoundStep[] {
+  const busiest = Math.max(1, ...points.map((point) => point.temperature));
+  return points.map((point) => {
+    const level = point.temperature / busiest;
+    const hits = (point.happenings ?? []).map((group) => ({
+      instrument: instrumentForCategory[group.category] ?? "pluck",
+      strength: Math.min(1, 0.25 + Math.log10(1 + group.count) / 2),
+      pan: Math.max(-1, Math.min(1, group.longitude / 180)),
+      note: noteFor(Math.min(1, group.count / 20)),
+    }));
+    const startOfWeek = point.position % 7 === 0;
+    return {
+      notes: [],
+      hits,
+      brightness: 600 + level * 4000,
+      heat: level * 0.5,
+      bassNote: startOfWeek ? "C2" : undefined,
+      spokenWord: startOfWeek ? point.label : undefined,
+    };
+  });
+}
+
 export function placeSteps(points: ClimatePoint[]): SoundStep[] {
   const [coldest, warmest] = valueRange(points.map((point) => point.temperature));
   const [driest, wettest] = valueRange(points.map((point) => point.rainfall ?? NaN));
@@ -90,9 +130,10 @@ export function placeSteps(points: ClimatePoint[]): SoundStep[] {
 
 export class SoundEngine {
   private ready = false;
-  private leadSynth!: Tone.PolySynth;
+  private leadSynth!: Tone.PolySynth<Tone.FMSynth>;
   private zoneSynths!: Record<ZoneVoice, Tone.PolySynth>;
   private bassSynth!: Tone.MonoSynth;
+  private hitPlayers!: Record<HitInstrument, { panner: Tone.Panner; play: (note: string, strength: number, time: number) => void }>;
   private toneFilter!: Tone.Filter;
   private hazeLevel!: Tone.Gain;
   private masterVolume!: Tone.Volume;
@@ -164,10 +205,65 @@ export class SoundEngine {
       envelope: { attack: 0.05, decay: 0.6, sustain: 0.3, release: 1.5 },
       volume: -8,
     }).connect(reverb);
+    const pannedInto = (destination: Tone.InputNode) => new Tone.Panner(0).connect(destination);
+    const crackleSynth = new Tone.NoiseSynth({
+      noise: { type: "white" },
+      envelope: { attack: 0.001, decay: 0.05, sustain: 0 },
+      volume: -18,
+    });
+    const crackleSpot = pannedInto(this.masterVolume);
+    crackleSynth.connect(crackleSpot);
+    const stormDrum = new Tone.MembraneSynth({ volume: -6 });
+    const stormSpot = pannedInto(reverb);
+    stormDrum.connect(stormSpot);
+    const volcanoDrum = new Tone.MembraneSynth({ octaves: 6, volume: -2 });
+    const volcanoSpot = pannedInto(reverb);
+    volcanoDrum.connect(volcanoSpot);
+    const iceBell = new Tone.MetalSynth({
+      envelope: { attack: 0.001, decay: 0.6, release: 0.3 },
+      harmonicity: 5.1,
+      resonance: 3000,
+      volume: -24,
+    });
+    const iceSpot = pannedInto(reverb);
+    iceBell.connect(iceSpot);
+    const pluckSynth = new Tone.Synth({
+      oscillator: { type: "triangle" },
+      envelope: { attack: 0.005, decay: 0.2, sustain: 0, release: 0.3 },
+      volume: -12,
+    });
+    const pluckSpot = pannedInto(this.toneFilter);
+    pluckSynth.connect(pluckSpot);
+    this.hitPlayers = {
+      crackle: {
+        panner: crackleSpot,
+        play: (_note, strength, time) => {
+          const crackles = 1 + Math.round(strength * 4);
+          for (let crackle = 0; crackle < crackles; crackle++) {
+            crackleSynth.triggerAttackRelease(0.03, time + crackle * 0.035, strength);
+          }
+        },
+      },
+      storm: { panner: stormSpot, play: (_note, strength, time) => stormDrum.triggerAttackRelease("G1", 0.3, time, strength) },
+      volcano: { panner: volcanoSpot, play: (_note, strength, time) => volcanoDrum.triggerAttackRelease("C1", 0.6, time, strength) },
+      ice: { panner: iceSpot, play: (_note, strength, time) => iceBell.triggerAttackRelease("C5", 0.4, time, strength) },
+      pluck: { panner: pluckSpot, play: (note, strength, time) => pluckSynth.triggerAttackRelease(note, 0.15, time, strength) },
+    };
     this.hazeLevel = new Tone.Gain(0).connect(this.masterVolume);
     const hazeBand = new Tone.Filter(900, "bandpass").connect(this.hazeLevel);
     new Tone.Noise("pink").connect(hazeBand).start();
     this.ready = true;
+  }
+
+  useLeadSound(sound: LeadSound) {
+    if (!this.ready) return;
+    const preset = leadPresets[sound];
+    const [attack, decay, sustain, release] = preset.envelope;
+    this.leadSynth.set({
+      harmonicity: preset.harmonicity,
+      modulationIndex: preset.modulationIndex,
+      envelope: { attack, decay, sustain, release },
+    });
   }
 
   setVolume(decibels: number) {
@@ -190,6 +286,12 @@ export class SoundEngine {
         step.zoneNotes?.forEach(({ voice, note }) =>
           this.zoneSynths[voice].triggerAttackRelease(note, Math.max(0.08, secondsPerStep * 0.85), time),
         );
+        step.hits?.forEach((hit, order) => {
+          const player = this.hitPlayers[hit.instrument];
+          const hitTime = time + order * Math.min(0.06, secondsPerStep / 6);
+          player.panner.pan.setValueAtTime(hit.pan, hitTime);
+          player.play(hit.note, hit.strength, hitTime);
+        });
         this.toneFilter.frequency.rampTo(step.brightness, Math.min(0.2, secondsPerStep * 0.8), time);
         this.hazeLevel.gain.rampTo(step.heat * step.heat * 0.12, secondsPerStep, time);
         if (step.bassNote) this.bassSynth.triggerAttackRelease(step.bassNote, secondsPerStep * 2, time);

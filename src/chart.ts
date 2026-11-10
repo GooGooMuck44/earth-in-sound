@@ -50,8 +50,21 @@ export class ClimateChart {
         ...sharedOptions,
         scales: { x: { time: false } },
         legend: { show: false },
-        axes: [yearAxis, { ...axisStyle, label: "°C vs 1951–1980", values: signedTicks }],
+        axes: [yearAxis, { ...axisStyle, label: "°C", values: signedTicks }],
         series: [{}, { label: "Anomaly", stroke: warmColor, width: 2, fill: themeColor("--temp-fill") }],
+      };
+    } else if (track.kind === "events") {
+      const dayBars = uPlot.paths.bars!({ size: [0.8, 14] });
+      series = [positions, track.points.map((point) => point.temperature)];
+      options = {
+        ...sharedOptions,
+        scales: { x: { time: false } },
+        legend: { show: false },
+        axes: [
+          { ...axisStyle, values: (_plot: uPlot, ticks: number[]) => ticks.map((tick) => track.points[Math.round(tick)]?.label ?? "") },
+          { ...axisStyle, label: "events" },
+        ],
+        series: [{}, { label: "Events", stroke: warmColor, fill: themeColor("--temp-fill"), paths: dayBars, points: { show: false } }],
       };
     } else if (track.kind === "zones") {
       series = [
@@ -64,12 +77,12 @@ export class ClimateChart {
         ...sharedOptions,
         scales: { x: { time: false } },
         legend: { show: true, live: false },
-        axes: [yearAxis, { ...axisStyle, label: "°C vs 1951–1980", values: signedTicks }],
+        axes: [yearAxis, { ...axisStyle, label: "°C", values: signedTicks }],
         series: [
           {},
-          { label: "Arctic (left ear)", stroke: themeColor("--arctic"), width: 2 },
-          { label: "Tropics (centre)", stroke: warmColor, width: 2 },
-          { label: "Antarctic (right ear)", stroke: themeColor("--antarctic"), width: 1.5 },
+          { label: "Arctic", stroke: themeColor("--arctic"), width: 2 },
+          { label: "Tropics", stroke: themeColor("--tropics"), width: 2 },
+          { label: "Antarctic", stroke: themeColor("--antarctic"), width: 1.5 },
         ],
       };
     } else {
@@ -87,11 +100,11 @@ export class ClimateChart {
         axes: [
           yearAxis,
           { ...axisStyle, label: "°C", scale: "°C" },
-          { ...axisStyle, scale: "rain", side: 1, grid: { show: false }, label: "rain mm/day" },
+          { ...axisStyle, scale: "rain", side: 1, grid: { show: false }, label: "mm/day" },
         ],
         series: [
           {},
-          { label: "Temperature °C", scale: "°C", stroke: warmColor, width: 2 },
+          { label: "Temperature", scale: "°C", stroke: warmColor, width: 2 },
           { label: "Rain", scale: "rain", fill: themeColor("--rain"), stroke: themeColor("--rain"), paths: rainBars, points: { show: false } },
           { label: "Sunshine", scale: "sun", stroke: themeColor("--sun"), width: 1, dash: [4, 4] },
         ],
