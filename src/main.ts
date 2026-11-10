@@ -14,7 +14,18 @@ import {
   type Place,
   type TrackKind,
 } from "./data";
-import { SoundEngine, eventSteps, globalSteps, placeSteps, zoneSteps, type LeadSound, type SoundStep } from "./sonify";
+import {
+  SoundEngine,
+  eventSteps,
+  globalSteps,
+  placeSteps,
+  shouldLoopPlayback,
+  supportsLeadSound,
+  zoneSteps,
+  type LeadSound,
+  type SoundStep,
+} from "./sonify";
+import { tabAfterKey } from "./ui";
 
 const examplePlaces = examplePlacesFile as Place[];
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -40,11 +51,14 @@ const page = {
   nowValue: element("now-value"),
   speedPicker: element<HTMLSelectElement>("speed"),
   instrumentPicker: element<HTMLSelectElement>("instrument"),
+  instrumentControl: element("instrument-control"),
   loopToggle: element<HTMLInputElement>("loop"),
   narrateToggle: element<HTMLInputElement>("narrate"),
   volumeSlider: element<HTMLInputElement>("vol"),
   status: element("status"),
   connection: element("connection"),
+  firstListenHint: element("first-listen-hint"),
+  headphonesHint: element("headphones-hint"),
   soundGuide: element("mapping"),
   findings: element("facts"),
   source: element("source"),
@@ -93,25 +107,36 @@ async function showTrack(loadTrack: () => Promise<ClimateTrack>) {
     describeSound(loaded);
     describeFindings(loaded);
     showReadout(0);
-    page.status.textContent = loaded.fromBackup ? "Saved copy" : "";
+    page.status.textContent = loaded.notice ?? (loaded.fromBackup ? "Using saved data." : "");
+    const instrumentAvailable = supportsLeadSound(loaded.kind);
+    page.instrumentPicker.disabled = !instrumentAvailable;
+    page.instrumentControl.setAttribute(
+      "title",
+      instrumentAvailable ? "Choose the lead instrument" : "This track uses its own fixed instruments",
+    );
+    page.headphonesHint.hidden = loaded.kind !== "zones";
     page.playButton.disabled = false;
     page.recordButton.disabled = !engine.canRecord;
   } catch (problem) {
     if (request !== latestRequest) return;
     console.error(problem);
-    page.status.textContent = friendlyError() + (problem instanceof Error ? ` (${problem.message})` : "");
+    page.status.textContent = friendlyError();
   }
 }
 
 function friendlyError() {
-  if (activeTab === "place") return "Couldn't reach NASA POWER. Try an example city.";
-  if (activeTab === "events") return "Couldn't reach NASA EONET.";
-  return "Couldn't load NASA data.";
+  if (activeTab === "place") return "NASA POWER is unavailable. Choose a saved example city and try again.";
+  if (activeTab === "events") return "NASA EONET is unavailable. Reconnect and try again.";
+  return "NASA data couldn't load. Reconnect and try again.";
 }
 
 function openTab(kind: TrackKind) {
   activeTab = kind;
-  for (const [tabKind, tab] of Object.entries(page.tabs)) tab.setAttribute("aria-selected", String(tabKind === kind));
+  for (const [tabKind, tab] of Object.entries(page.tabs)) {
+    const selected = tabKind === kind;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
   page.placeTools.hidden = kind !== "place";
   if (kind === "place") {
     openPlace(placeFromAddress() ?? examplePlaces[0]);
@@ -132,6 +157,7 @@ async function refreshWithLiveEvents() {
     await showTrack(async () => live);
   } catch (problem) {
     console.error(problem);
+    if (request === latestRequest) page.status.textContent = "Using saved EONET data. Live update unavailable.";
   }
 }
 
@@ -249,7 +275,7 @@ function showReadout(stepNumber: number) {
     track.kind === "global"
       ? `${withSign(point.temperature)} °C`
       : track.kind === "events"
-        ? `${point.temperature} events${point.headlines?.length ? ` · ${point.headlines.slice(0, 2).join(" · ")}` : ""}`
+        ? `${point.temperature} events${point.headlines?.length ? ` · ${point.headlines.slice(0, 3).join(" · ")}` : ""}`
         : track.kind === "zones"
         ? `${withSign(point.arctic ?? NaN)} · ${withSign(point.tropics ?? NaN)} · ${withSign(point.antarctic ?? NaN)} °C`
         : `${oneDecimal(point.temperature)} °C · ${oneDecimal(point.rainfall)} mm · ${oneDecimal(point.sunshine)} kWh`;
@@ -276,6 +302,7 @@ async function prepareAudio() {
 
 async function togglePlay() {
   if (!track || !(await prepareAudio())) return;
+  page.firstListenHint.hidden = true;
   if (engine.playing) {
     engine.pause();
     showPlaying(false);
@@ -292,6 +319,7 @@ async function togglePlay() {
 
 async function recordFromStart() {
   if (!track || !(await prepareAudio())) return;
+  page.firstListenHint.hidden = true;
   if (engine.recording) {
     engine.pause();
     showPlaying(false);
@@ -333,7 +361,7 @@ function jumpTo(stepNumber: number) {
 
 engine.onStep = showReadout;
 engine.onEnd = () => {
-  if (page.loopToggle.checked && !engine.recording) {
+  if (shouldLoopPlayback(page.loopToggle.checked, engine.recording)) {
     engine.load(steps, secondsPerStep(), 0);
     engine.play();
     return;
@@ -357,7 +385,16 @@ page.speedPicker.addEventListener("change", () => {
   engine.load(steps, secondsPerStep(), engine.currentStep);
   if (wasPlaying) engine.play();
 });
-for (const [kind, tab] of Object.entries(page.tabs)) tab.addEventListener("click", () => openTab(kind as TrackKind));
+for (const [kind, tab] of Object.entries(page.tabs)) {
+  tab.addEventListener("click", () => openTab(kind as TrackKind));
+  tab.addEventListener("keydown", (event) => {
+    const destination = tabAfterKey(kind as TrackKind, event.key);
+    if (!destination) return;
+    event.preventDefault();
+    page.tabs[destination].focus();
+    openTab(destination);
+  });
+}
 
 document.addEventListener("keydown", (event) => {
   const typingTarget = (event.target as HTMLElement).tagName;
@@ -391,7 +428,7 @@ page.searchForm.addEventListener("submit", async (event) => {
     page.searchResults.innerHTML = found.length ? "" : "<li class='muted'>No results</li>";
     page.searchResults.append(...found.map(placeChip));
   } catch {
-    page.searchResults.innerHTML = "<li class='muted'>Search unavailable</li>";
+    page.searchResults.innerHTML = "<li class='muted'>Search unavailable. Choose a saved city below.</li>";
   }
 });
 
@@ -406,6 +443,9 @@ page.nearMeButton.addEventListener("click", () => {
 
 function showConnection() {
   page.connection.hidden = navigator.onLine;
+  if (!navigator.onLine && activeTab === "place") {
+    page.status.textContent = "Offline: search needs a connection. Saved example cities still work.";
+  }
 }
 window.addEventListener("online", showConnection);
 window.addEventListener("offline", showConnection);
