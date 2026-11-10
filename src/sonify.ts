@@ -1,5 +1,5 @@
 import * as Tone from "tone";
-import type { ClimatePoint } from "./data";
+import type { ClimatePoint, TrackKind } from "./data";
 
 export const pentatonicScale = [
   "C3", "D3", "E3", "G3", "A3",
@@ -48,6 +48,24 @@ const valueRange = (values: number[]) => {
 const noteFor = (level: number) =>
   pentatonicScale[Math.max(0, Math.min(pentatonicScale.length - 1, Math.round(level * (pentatonicScale.length - 1))))];
 
+export function longitudeToPan(longitude: number): number {
+  if (!Number.isFinite(longitude)) return 0;
+  return Math.max(-1, Math.min(1, longitude / 180));
+}
+
+export function evenlySpacedHitOffsets(hitCount: number, secondsPerStep: number): number[] {
+  if (hitCount <= 0 || secondsPerStep <= 0) return [];
+  return Array.from({ length: hitCount }, (_, order) => (order * secondsPerStep) / hitCount);
+}
+
+export function supportsLeadSound(kind: TrackKind): boolean {
+  return kind === "global" || kind === "place";
+}
+
+export function shouldLoopPlayback(loopRequested: boolean, recording: boolean): boolean {
+  return loopRequested && !recording;
+}
+
 export function globalSteps(points: ClimatePoint[]): SoundStep[] {
   const [coldest, warmest] = valueRange(points.map((point) => point.temperature));
   return points.map((point) => {
@@ -88,12 +106,14 @@ export function eventSteps(points: ClimatePoint[]): SoundStep[] {
   const busiest = Math.max(1, ...points.map((point) => point.temperature));
   return points.map((point) => {
     const level = point.temperature / busiest;
-    const hits = (point.happenings ?? []).map((group) => ({
-      instrument: instrumentForCategory[group.category] ?? "pluck",
-      strength: Math.min(1, 0.25 + Math.log10(1 + group.count) / 2),
-      pan: Math.max(-1, Math.min(1, group.longitude / 180)),
-      note: noteFor(Math.min(1, group.count / 20)),
-    }));
+    const hits = (point.happenings ?? []).flatMap((group) =>
+      Array.from({ length: group.count }, () => ({
+        instrument: instrumentForCategory[group.category] ?? "pluck",
+        strength: Math.min(1, 0.25 + Math.log10(1 + group.count) / 2),
+        pan: longitudeToPan(group.longitude),
+        note: noteFor(Math.min(1, group.count / 20)),
+      })),
+    );
     const startOfWeek = point.position % 7 === 0;
     return {
       notes: [],
@@ -286,9 +306,10 @@ export class SoundEngine {
         step.zoneNotes?.forEach(({ voice, note }) =>
           this.zoneSynths[voice].triggerAttackRelease(note, Math.max(0.08, secondsPerStep * 0.85), time),
         );
+        const hitOffsets = evenlySpacedHitOffsets(step.hits?.length ?? 0, secondsPerStep);
         step.hits?.forEach((hit, order) => {
           const player = this.hitPlayers[hit.instrument];
-          const hitTime = time + order * Math.min(0.06, secondsPerStep / 6);
+          const hitTime = time + hitOffsets[order];
           player.panner.pan.setValueAtTime(hit.pan, hitTime);
           player.play(hit.note, hit.strength, hitTime);
         });

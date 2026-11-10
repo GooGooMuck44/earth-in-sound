@@ -25,6 +25,7 @@ export interface ClimateTrack {
   source: string;
   points: ClimatePoint[];
   fromBackup?: boolean;
+  notice?: string;
   eventTotals?: Record<string, number>;
 }
 
@@ -143,7 +144,7 @@ export async function loadPolesAndTropics(): Promise<ClimateTrack> {
 export const eonetUrl = "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&days=60";
 const eventWindowDays = 60;
 
-interface EonetEvent {
+export interface EonetEvent {
   title: string;
   categories: { id: string }[];
   geometry: { date: string; type: string; coordinates: unknown }[];
@@ -204,6 +205,7 @@ function eventTrack(events: EonetEvent[], live: boolean): ClimateTrack {
     title: "Earth right now · last 60 days",
     source: live ? "NASA EONET · live" : `NASA EONET · saved ${newest?.slice(0, 10) ?? ""}`,
     points: eventDays(events, !live && newest ? new Date(newest) : new Date()),
+    notice: live ? "Live EONET data loaded." : "Using saved EONET data while checking for a live update.",
   };
 }
 
@@ -270,7 +272,7 @@ async function fetchPowerLive(place: Place): Promise<PowerTable> {
 
 const placeKey = (place: Place) => `earth-in-sound:place:${place.latitude.toFixed(2)},${place.longitude.toFixed(2)}`;
 
-function distanceKm(from: Place, to: Place) {
+export function distanceKm(from: Place, to: Place) {
   const radians = Math.PI / 180;
   const latitudeGap = (to.latitude - from.latitude) * radians;
   const longitudeGap = (to.longitude - from.longitude) * radians;
@@ -289,16 +291,23 @@ export function nearestExample(place: Place, examples: Place[]): Place {
 export async function loadPlace(place: Place, examples: Place[] = []): Promise<ClimateTrack> {
   let table: PowerTable | null = null;
   let backupNote = "";
+  let notice = "";
   let shownPlace = place;
   try {
     table = await fetchPowerLive(place);
     keepSavedCopy(placeKey(place), table);
   } catch (liveError) {
     table = readSavedCopy<PowerTable>(placeKey(place));
-    if (table) backupNote = " · saved copy";
+    if (table) {
+      backupNote = " · saved browser copy";
+      notice = `Live NASA POWER data unavailable. Using saved data for ${place.name}.`;
+    }
     if (!table && place.slug) {
       table = (await loadBundledJson<{ parameter: PowerTable }>(`places/${place.slug}.json`))?.parameter ?? null;
-      if (table) backupNote = " · saved copy";
+      if (table) {
+        backupNote = " · bundled saved data";
+        notice = `Live NASA POWER data unavailable. Using bundled data for ${place.name}.`;
+      }
     }
     if (!table && examples.length) {
       const fallback = nearestExample(place, examples);
@@ -306,6 +315,7 @@ export async function loadPlace(place: Place, examples: Place[] = []): Promise<C
       if (table) {
         shownPlace = fallback;
         backupNote = ` · offline, nearest saved city`;
+        notice = `Live data unavailable. Playing the nearest saved city: ${fallback.name}.`;
       }
     }
     if (!table) throw liveError;
@@ -319,6 +329,7 @@ export async function loadPlace(place: Place, examples: Place[] = []): Promise<C
     source: `NASA POWER · ${shownPlace.latitude.toFixed(2)}, ${shownPlace.longitude.toFixed(2)}${backupNote}`,
     points,
     fromBackup: Boolean(backupNote),
+    notice,
   };
 }
 
