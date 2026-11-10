@@ -1,83 +1,108 @@
-// Saves NASA data into public/data/ so the app works offline and on any static host.
-//   node scripts/fetch-data.mjs
-// - GISTEMP global annual anomalies -> public/data/gistemp.json (required: the browser can't fetch it directly)
-// - NASA POWER monthly data for each example place -> public/data/places/<slug>.json (backup for the live API)
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 
-const GISTEMP_CSV = "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv";
-const START = 2001;
-const out = new URL("../public/data/", import.meta.url);
-const presets = JSON.parse(await readFile(new URL("../src/presets.json", import.meta.url), "utf8"));
-await mkdir(new URL("places/", out), { recursive: true });
+const globalCsvUrl = "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv";
+const zonalCsvUrl = "https://data.giss.nasa.gov/gistemp/tabledata_v4/ZonAnn.Ts+dSST.csv";
+const powerFirstYear = 2001;
+const dataFolder = new URL("../public/data/", import.meta.url);
+const examplePlaces = JSON.parse(await readFile(new URL("../src/presets.json", import.meta.url), "utf8"));
+await mkdir(new URL("places/", dataFolder), { recursive: true });
 
-let failures = 0;
+let failedDownloads = 0;
 
-async function get(url, tries = 3) {
-  for (let i = 1; ; i++) {
+async function download(url, attempts = 3) {
+  for (let attempt = 1; ; attempt++) {
     try {
-      const r = await fetch(url, { headers: { "User-Agent": "earth-in-sound (Space Apps project)" } });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r;
-    } catch (e) {
-      if (i >= tries) throw e;
-      await new Promise((res) => setTimeout(res, 2000 * i));
+      const response = await fetch(url, {
+        headers: { "User-Agent": "earth-in-sound (Space Apps project)" },
+        signal: AbortSignal.timeout(60000),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response;
+    } catch (error) {
+      if (attempt >= attempts) throw error;
+      await new Promise((resume) => setTimeout(resume, 2000 * attempt));
     }
   }
 }
 
-// --- GISTEMP ---
-try {
-  const csv = await (await get(GISTEMP_CSV)).text();
-  const lines = csv.split(/\r?\n/);
-  const h = lines.findIndex((l) => l.startsWith("Year,"));
-  const jd = lines[h].split(",").indexOf("J-D");
-  const years = lines
-    .slice(h + 1)
-    .map((l) => l.split(","))
-    .filter((c) => Number.isFinite(Number(c[0])) && c[jd] && c[jd] !== "***")
-    .map((c) => ({ year: Number(c[0]), anomaly: Number(c[jd]) }));
-  await writeFile(
-    new URL("gistemp.json", out),
-    JSON.stringify({ source: GISTEMP_CSV, fetched: new Date().toISOString(), baseline: "1951-1980", years }),
-  );
-  console.log(`✓ GISTEMP: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
-} catch (e) {
-  failures++;
-  console.error(`✗ GISTEMP failed: ${e.message}`);
+function readCsvTable(csvText) {
+  const lines = csvText.split(/\r?\n/);
+  const headerLine = lines.findIndex((line) => line.startsWith("Year,"));
+  if (headerLine < 0) throw new Error("unexpected CSV layout");
+  const columns = lines[headerLine].split(",");
+  const rows = lines
+    .slice(headerLine + 1)
+    .map((line) => line.split(","))
+    .filter((cells) => Number.isFinite(Number(cells[0])) && cells[0] !== "");
+  return { columns, rows };
 }
 
-// --- NASA POWER for each example place ---
-const thisYear = new Date().getFullYear();
-for (const p of presets) {
+const readNumber = (cell) => (cell && cell !== "***" && Number.isFinite(Number(cell)) ? Number(cell) : null);
+
+async function saveJson(name, content) {
+  await writeFile(new URL(name, dataFolder), JSON.stringify({ ...content, fetched: new Date().toISOString() }));
+}
+
+try {
+  const { columns, rows } = readCsvTable(await (await download(globalCsvUrl)).text());
+  const annualColumn = columns.indexOf("J-D");
+  const years = rows
+    .map((cells) => ({ year: Number(cells[0]), anomaly: readNumber(cells[annualColumn]) }))
+    .filter((entry) => entry.anomaly !== null);
+  await saveJson("gistemp.json", { source: globalCsvUrl, baseline: "1951-1980", years });
+  console.log(`✓ GISTEMP global: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
+} catch (error) {
+  failedDownloads++;
+  console.error(`✗ GISTEMP global failed: ${error.message}`);
+}
+
+try {
+  const { columns, rows } = readCsvTable(await (await download(zonalCsvUrl)).text());
+  const column = (name) => columns.indexOf(name);
+  const years = rows
+    .map((cells) => ({
+      year: Number(cells[0]),
+      global: readNumber(cells[column("Glob")]),
+      arctic: readNumber(cells[column("64N-90N")]),
+      tropics: readNumber(cells[column("24S-24N")]),
+      antarctic: readNumber(cells[column("90S-64S")]),
+    }))
+    .filter((entry) => [entry.global, entry.arctic, entry.tropics, entry.antarctic].every((value) => value !== null));
+  await saveJson("zones.json", { source: zonalCsvUrl, baseline: "1951-1980", years });
+  console.log(`✓ GISTEMP zones: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
+} catch (error) {
+  failedDownloads++;
+  console.error(`✗ GISTEMP zones failed: ${error.message}`);
+}
+
+const currentYear = new Date().getFullYear();
+for (const place of examplePlaces) {
   let saved = false;
-  for (const end of [thisYear - 1, thisYear - 2]) {
-    const q = new URLSearchParams({
+  for (const lastYear of [currentYear - 1, currentYear - 2]) {
+    const query = new URLSearchParams({
       parameters: "T2M,PRECTOTCORR,ALLSKY_SFC_SW_DWN",
       community: "AG",
-      latitude: p.lat.toFixed(4),
-      longitude: p.lon.toFixed(4),
-      start: String(START),
-      end: String(end),
+      latitude: place.latitude.toFixed(4),
+      longitude: place.longitude.toFixed(4),
+      start: String(powerFirstYear),
+      end: String(lastYear),
       format: "JSON",
     });
-    const url = `https://power.larc.nasa.gov/api/temporal/monthly/point?${q}`;
+    const url = `https://power.larc.nasa.gov/api/temporal/monthly/point?${query}`;
     try {
-      const j = await (await get(url, 2)).json();
-      await writeFile(
-        new URL(`places/${p.slug}.json`, out),
-        JSON.stringify({ place: p, source: url, fetched: new Date().toISOString(), parameter: j.properties.parameter }),
-      );
-      console.log(`✓ POWER: ${p.name} ${START}–${end}`);
+      const body = await (await download(url, 2)).json();
+      await saveJson(`places/${place.slug}.json`, { place, source: url, parameter: body.properties.parameter });
+      console.log(`✓ POWER: ${place.name} ${powerFirstYear}–${lastYear}`);
       saved = true;
       break;
-    } catch (e) {
-      if (end === thisYear - 2) console.error(`✗ POWER ${p.name} failed: ${e.message}`);
+    } catch (error) {
+      if (lastYear === currentYear - 2) console.error(`✗ POWER ${place.name} failed: ${error.message}`);
     }
   }
-  if (!saved) failures++;
+  if (!saved) failedDownloads++;
 }
 
-if (failures) {
-  console.error(`${failures} download(s) failed. The app still runs; failed items fall back to live fetching.`);
+if (failedDownloads) {
+  console.error(`${failedDownloads} download(s) failed. Previously saved copies in public/data/ are kept and still used.`);
   process.exitCode = 1;
 }

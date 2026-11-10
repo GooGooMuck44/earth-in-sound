@@ -1,84 +1,117 @@
-// uPlot chart with a playhead that follows the music.
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
-import type { Dataset } from "./data";
+import type { ClimateTrack } from "./data";
 
-const num = (v: number | undefined) => (v != null && Number.isFinite(v) ? v : null);
-const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const orBlank = (value: number | undefined) => (value != null && Number.isFinite(value) ? value : null);
+const themeColor = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const signedTicks = (_plot: uPlot, ticks: number[]) => ticks.map((tick) => (tick > 0 ? "+" : "") + tick.toFixed(1));
 
-export class Chart {
-  private u: uPlot | null = null;
-  private head = document.createElement("div");
-  private ds: Dataset | null = null;
-  private cur = 0;
-  onSeek: (i: number) => void = () => {};
+export class ClimateChart {
+  private plot: uPlot | null = null;
+  private playhead = document.createElement("div");
+  private track: ClimateTrack | null = null;
+  private currentStep = 0;
+  onJump: (stepNumber: number) => void = () => {};
 
-  constructor(private el: HTMLElement) {
-    this.head.className = "playhead";
-    new ResizeObserver(() => this.u?.setSize(this.size())).observe(el);
+  constructor(private container: HTMLElement) {
+    this.playhead.className = "playhead";
+    new ResizeObserver(() => this.plot?.setSize(this.sizeForContainer())).observe(container);
   }
 
-  private size() {
-    const w = this.el.clientWidth;
-    return { width: w, height: Math.max(220, Math.min(380, Math.round(w * 0.42))) };
+  private sizeForContainer() {
+    const width = this.container.clientWidth;
+    return { width, height: Math.max(220, Math.min(380, Math.round(width * 0.42))) };
   }
 
-  render(ds: Dataset) {
-    this.ds = ds;
-    this.u?.destroy();
-    const xs = ds.points.map((p) => p.x);
-    const temp = css("--temp");
-    const axis = { stroke: css("--muted"), grid: { stroke: css("--grid"), width: 1 }, ticks: { show: false } };
-    const xAxis = { ...axis, values: (_: uPlot, ticks: number[]) => ticks.map((t) => String(Math.floor(t))) };
+  render(track: ClimateTrack) {
+    this.track = track;
+    this.plot?.destroy();
+    const positions = track.points.map((point) => point.position);
+    const warmColor = themeColor("--temp");
+    const axisStyle = {
+      stroke: themeColor("--muted"),
+      grid: { stroke: themeColor("--grid"), width: 1 },
+      ticks: { show: false },
+    };
+    const yearAxis = {
+      ...axisStyle,
+      values: (_plot: uPlot, ticks: number[]) => ticks.map((tick) => String(Math.floor(tick))),
+    };
+    const sharedOptions = {
+      ...this.sizeForContainer(),
+      cursor: { y: false, points: { show: false } },
+    };
 
-    let opts: uPlot.Options;
-    let data: uPlot.AlignedData;
-    if (ds.kind === "global") {
-      data = [xs, ds.points.map((p) => p.temp)];
-      opts = {
-        ...this.size(),
+    let options: uPlot.Options;
+    let series: uPlot.AlignedData;
+    if (track.kind === "global") {
+      series = [positions, track.points.map((point) => point.temperature)];
+      options = {
+        ...sharedOptions,
         scales: { x: { time: false } },
         legend: { show: false },
-        cursor: { y: false, points: { show: false } },
-        axes: [xAxis, { ...axis, label: "°C vs 1951–1980", values: (_, t) => t.map((v) => (v > 0 ? "+" : "") + v.toFixed(1)) }],
-        series: [{}, { label: "Anomaly", stroke: temp, width: 2, fill: css("--temp-fill") }],
+        axes: [yearAxis, { ...axisStyle, label: "°C vs 1951–1980", values: signedTicks }],
+        series: [{}, { label: "Anomaly", stroke: warmColor, width: 2, fill: themeColor("--temp-fill") }],
+      };
+    } else if (track.kind === "zones") {
+      series = [
+        positions,
+        track.points.map((point) => orBlank(point.arctic)),
+        track.points.map((point) => orBlank(point.tropics)),
+        track.points.map((point) => orBlank(point.antarctic)),
+      ];
+      options = {
+        ...sharedOptions,
+        scales: { x: { time: false } },
+        legend: { show: true, live: false },
+        axes: [yearAxis, { ...axisStyle, label: "°C vs 1951–1980", values: signedTicks }],
+        series: [
+          {},
+          { label: "Arctic (left ear)", stroke: themeColor("--arctic"), width: 2 },
+          { label: "Tropics (centre)", stroke: warmColor, width: 2 },
+          { label: "Antarctic (right ear)", stroke: themeColor("--antarctic"), width: 1.5 },
+        ],
       };
     } else {
-      const bars = uPlot.paths.bars!({ size: [0.7, 8] });
-      data = [xs, ds.points.map((p) => p.temp), ds.points.map((p) => num(p.rain)), ds.points.map((p) => num(p.sun))];
-      opts = {
-        ...this.size(),
-        scales: { x: { time: false }, rain: { range: (_u, _lo, hi) => [0, hi * 2.2] } },
+      const rainBars = uPlot.paths.bars!({ size: [0.7, 8] });
+      series = [
+        positions,
+        track.points.map((point) => point.temperature),
+        track.points.map((point) => orBlank(point.rainfall)),
+        track.points.map((point) => orBlank(point.sunshine)),
+      ];
+      options = {
+        ...sharedOptions,
+        scales: { x: { time: false }, rain: { range: (_plot, _lowest, highest) => [0, highest * 2.2] } },
         legend: { show: true, live: false },
-        cursor: { y: false, points: { show: false } },
         axes: [
-          xAxis,
-          { ...axis, label: "°C", scale: "°C" },
-          { ...axis, scale: "rain", side: 1, grid: { show: false }, label: "rain mm/day" },
+          yearAxis,
+          { ...axisStyle, label: "°C", scale: "°C" },
+          { ...axisStyle, scale: "rain", side: 1, grid: { show: false }, label: "rain mm/day" },
         ],
         series: [
           {},
-          { label: "Temperature °C", scale: "°C", stroke: temp, width: 2 },
-          { label: "Rain", scale: "rain", fill: css("--rain"), stroke: css("--rain"), paths: bars, points: { show: false } },
-          { label: "Sunshine", scale: "sun", stroke: css("--sun"), width: 1, dash: [4, 4] },
+          { label: "Temperature °C", scale: "°C", stroke: warmColor, width: 2 },
+          { label: "Rain", scale: "rain", fill: themeColor("--rain"), stroke: themeColor("--rain"), paths: rainBars, points: { show: false } },
+          { label: "Sunshine", scale: "sun", stroke: themeColor("--sun"), width: 1, dash: [4, 4] },
         ],
       };
     }
-    opts.hooks = { setSize: [() => this.setPlayhead(this.cur)] };
-    this.u = new uPlot(opts, data, this.el);
-    this.u.over.appendChild(this.head);
-    this.u.over.addEventListener("click", () => {
-      const i = this.u?.cursor.idx;
-      if (i != null) this.onSeek(i);
+    options.hooks = { setSize: [() => this.movePlayhead(this.currentStep)] };
+    this.plot = new uPlot(options, series, this.container);
+    this.plot.over.appendChild(this.playhead);
+    this.plot.over.addEventListener("click", () => {
+      const clickedStep = this.plot?.cursor.idx;
+      if (clickedStep != null) this.onJump(clickedStep);
     });
-    this.setPlayhead(0);
+    this.movePlayhead(0);
   }
 
-  setPlayhead(i: number) {
-    if (!this.u || !this.ds) return;
-    const x = this.ds.points[i]?.x;
-    if (x == null) return;
-    this.cur = i;
-    this.head.style.transform = `translateX(${this.u.valToPos(x, "x")}px)`;
+  movePlayhead(stepNumber: number) {
+    if (!this.plot || !this.track) return;
+    const position = this.track.points[stepNumber]?.position;
+    if (position == null) return;
+    this.currentStep = stepNumber;
+    this.playhead.style.transform = `translateX(${this.plot.valToPos(position, "x")}px)`;
   }
 }

@@ -1,186 +1,270 @@
-// Data → sound. Pure mapping functions first, then the Tone.js engine that plays them.
 import * as Tone from "tone";
-import type { Point } from "./data";
+import type { ClimatePoint } from "./data";
 
-// Major pentatonic over 3 octaves: any combination of these notes sounds consonant.
-export const SCALE = [
+export const pentatonicScale = [
   "C3", "D3", "E3", "G3", "A3",
   "C4", "D4", "E4", "G4", "A4",
   "C5", "D5", "E5", "G5", "A5",
   "C6",
 ];
 
-export interface Step {
-  notes: string[]; // played evenly spread across the step
-  cutoff: number; // lowpass Hz: brightness
-  heat: number; // 0–1, drives the background noise "heat haze"
-  bass?: string; // optional low orientation note (decades / January)
-  speak?: string; // optional narration
+export type ZoneVoice = "arctic" | "tropics" | "antarctic";
+
+export interface SoundStep {
+  notes: string[];
+  zoneNotes?: { voice: ZoneVoice; note: string }[];
+  brightness: number;
+  heat: number;
+  bassNote?: string;
+  spokenWord?: string;
 }
 
-const norm = (v: number, lo: number, hi: number) => (hi === lo ? 0.5 : (v - lo) / (hi - lo));
-const range = (vs: number[]) => {
-  const f = vs.filter(Number.isFinite);
-  return [Math.min(...f), Math.max(...f)] as const;
-};
-const pitch = (n: number) => SCALE[Math.max(0, Math.min(SCALE.length - 1, Math.round(n * (SCALE.length - 1))))];
+const scaleBetween = (value: number, lowest: number, highest: number) =>
+  highest === lowest ? 0.5 : (value - lowest) / (highest - lowest);
 
-/** GISTEMP: warmer year → higher note, brighter tone, more heat haze. A bass note marks each decade. */
-export function globalSteps(points: Point[]): Step[] {
-  const [lo, hi] = range(points.map((p) => p.temp));
-  return points.map((p) => {
-    const n = norm(p.temp, lo, hi);
-    const decade = p.x % 10 === 0;
+const valueRange = (values: number[]) => {
+  const usable = values.filter(Number.isFinite);
+  return [Math.min(...usable), Math.max(...usable)] as const;
+};
+
+const noteFor = (level: number) =>
+  pentatonicScale[Math.max(0, Math.min(pentatonicScale.length - 1, Math.round(level * (pentatonicScale.length - 1))))];
+
+export function globalSteps(points: ClimatePoint[]): SoundStep[] {
+  const [coldest, warmest] = valueRange(points.map((point) => point.temperature));
+  return points.map((point) => {
+    const level = scaleBetween(point.temperature, coldest, warmest);
+    const newDecade = point.position % 10 === 0;
     return {
-      notes: [pitch(n)],
-      cutoff: 350 + n * 5000,
-      heat: n,
-      bass: decade ? "C2" : undefined,
-      speak: decade ? String(p.x) : undefined,
+      notes: [noteFor(level)],
+      brightness: 350 + level * 5000,
+      heat: level,
+      bassNote: newDecade ? "C2" : undefined,
+      spokenWord: newDecade ? String(point.position) : undefined,
     };
   });
 }
 
-/** NASA POWER monthly: temperature → pitch, rain → 1–4 notes, sunshine → brightness. */
-export function placeSteps(points: Point[]): Step[] {
-  const [t0, t1] = range(points.map((p) => p.temp));
-  const [r0, r1] = range(points.map((p) => p.rain ?? NaN));
-  const [s0, s1] = range(points.map((p) => p.sun ?? NaN));
-  return points.map((p) => {
-    const tn = norm(p.temp, t0, t1);
-    const rn = Number.isFinite(p.rain) ? norm(p.rain!, r0, r1) : 0;
-    const sn = Number.isFinite(p.sun) ? norm(p.sun!, s0, s1) : 0.5;
-    const idx = Math.round(tn * (SCALE.length - 1));
-    const hits = 1 + Math.round(rn * 3);
-    // Rainy months become a falling arpeggio around the temperature note, like drops.
-    const notes = Array.from({ length: hits }, (_, h) => SCALE[Math.max(0, idx - h * 2)]);
-    const january = p.label.startsWith("Jan");
+export function zoneSteps(points: ClimatePoint[]): SoundStep[] {
+  const allZones = points.flatMap((point) => [point.arctic ?? NaN, point.tropics ?? NaN, point.antarctic ?? NaN]);
+  const [coldest, warmest] = valueRange(allZones);
+  const [globalCold, globalWarm] = valueRange(points.map((point) => point.temperature));
+  return points.map((point) => {
+    const globalLevel = scaleBetween(point.temperature, globalCold, globalWarm);
+    const newDecade = point.position % 10 === 0;
+    const zoneNotes = (["arctic", "tropics", "antarctic"] as ZoneVoice[])
+      .filter((voice) => Number.isFinite(point[voice]))
+      .map((voice) => ({ voice, note: noteFor(scaleBetween(point[voice]!, coldest, warmest)) }));
+    return {
+      notes: [],
+      zoneNotes,
+      brightness: 400 + globalLevel * 4500,
+      heat: globalLevel * 0.8,
+      bassNote: newDecade ? "C2" : undefined,
+      spokenWord: newDecade ? String(point.position) : undefined,
+    };
+  });
+}
+
+export function placeSteps(points: ClimatePoint[]): SoundStep[] {
+  const [coldest, warmest] = valueRange(points.map((point) => point.temperature));
+  const [driest, wettest] = valueRange(points.map((point) => point.rainfall ?? NaN));
+  const [dullest, sunniest] = valueRange(points.map((point) => point.sunshine ?? NaN));
+  return points.map((point) => {
+    const warmth = scaleBetween(point.temperature, coldest, warmest);
+    const wetness = Number.isFinite(point.rainfall) ? scaleBetween(point.rainfall!, driest, wettest) : 0;
+    const sunniness = Number.isFinite(point.sunshine) ? scaleBetween(point.sunshine!, dullest, sunniest) : 0.5;
+    const rootPosition = Math.round(warmth * (pentatonicScale.length - 1));
+    const raindrops = 1 + Math.round(wetness * 3);
+    const notes = Array.from({ length: raindrops }, (_, drop) => pentatonicScale[Math.max(0, rootPosition - drop * 2)]);
+    const isJanuary = point.label.startsWith("Jan");
     return {
       notes,
-      cutoff: 250 + sn * 4500,
-      heat: tn * 0.6,
-      bass: january ? "C2" : undefined,
-      speak: january ? p.label.slice(4) : undefined,
+      brightness: 250 + sunniness * 4500,
+      heat: warmth * 0.6,
+      bassNote: isJanuary ? "C2" : undefined,
+      spokenWord: isJanuary ? point.label.slice(4) : undefined,
     };
   });
 }
 
-// ---------- Engine ----------
-
-export class Engine {
-  private built = false;
-  private synth!: Tone.PolySynth;
-  private bass!: Tone.MonoSynth;
-  private filter!: Tone.Filter;
-  private noiseGain!: Tone.Gain;
-  private master!: Tone.Volume;
-  private steps: Step[] = [];
-  private stepSec = 0.5;
+export class SoundEngine {
+  private ready = false;
+  private leadSynth!: Tone.PolySynth;
+  private zoneSynths!: Record<ZoneVoice, Tone.PolySynth>;
+  private bassSynth!: Tone.MonoSynth;
+  private toneFilter!: Tone.Filter;
+  private hazeLevel!: Tone.Gain;
+  private masterVolume!: Tone.Volume;
+  private recorder: Tone.Recorder | null = null;
+  private steps: SoundStep[] = [];
+  private secondsPerStep = 0.5;
   narrate = false;
-  onStep: (i: number) => void = () => {};
+  onStep: (stepNumber: number) => void = () => {};
   onEnd: () => void = () => {};
 
   get transport() {
     return Tone.getTransport();
   }
+
   get playing() {
     return this.transport.state === "started";
   }
-  get index() {
-    return Math.min(this.steps.length - 1, Math.max(0, Math.floor(this.transport.seconds / this.stepSec + 1e-6)));
+
+  get currentStep() {
+    return Math.min(
+      this.steps.length - 1,
+      Math.max(0, Math.floor(this.transport.seconds / this.secondsPerStep + 1e-6)),
+    );
   }
 
-  /** Must be called from a user gesture (browsers block audio until then). */
+  get canRecord() {
+    return typeof MediaRecorder !== "undefined";
+  }
+
   async init() {
     await Tone.start();
-    if (this.built) return;
-    this.master = new Tone.Volume(-6).toDestination();
-    const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.3 }).connect(this.master);
-    this.filter = new Tone.Filter(1200, "lowpass", -24).connect(reverb);
-    this.synth = new Tone.PolySynth(Tone.FMSynth, {
+    if (this.ready) return;
+    this.masterVolume = new Tone.Volume(-6).toDestination();
+    const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.3 }).connect(this.masterVolume);
+    this.toneFilter = new Tone.Filter(1200, "lowpass", -24).connect(reverb);
+    this.leadSynth = new Tone.PolySynth(Tone.FMSynth, {
       harmonicity: 2,
       modulationIndex: 3,
       envelope: { attack: 0.01, decay: 0.3, sustain: 0.2, release: 0.8 },
       modulationEnvelope: { attack: 0.02, decay: 0.2, sustain: 0.1, release: 0.5 },
       volume: -10,
-    }).connect(this.filter);
-    this.synth.maxPolyphony = 24;
-    this.bass = new Tone.MonoSynth({
+    }).connect(this.toneFilter);
+    this.leadSynth.maxPolyphony = 24;
+    const zoneSynth = (pan: number, options: ConstructorParameters<typeof Tone.Synth>[0]) => {
+      const synth = new Tone.PolySynth(Tone.Synth, options as object);
+      synth.maxPolyphony = 12;
+      synth.connect(new Tone.Panner(pan).connect(this.toneFilter));
+      return synth;
+    };
+    this.zoneSynths = {
+      arctic: zoneSynth(-0.8, {
+        oscillator: { type: "triangle" },
+        envelope: { attack: 0.01, decay: 0.4, sustain: 0.1, release: 1 },
+        volume: -12,
+      }),
+      tropics: zoneSynth(0, {
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.05, decay: 0.3, sustain: 0.3, release: 0.8 },
+        volume: -14,
+      }),
+      antarctic: zoneSynth(0.8, {
+        oscillator: { type: "square" },
+        envelope: { attack: 0.01, decay: 0.2, sustain: 0.05, release: 0.6 },
+        volume: -22,
+      }),
+    };
+    this.bassSynth = new Tone.MonoSynth({
       oscillator: { type: "sine" },
       envelope: { attack: 0.05, decay: 0.6, sustain: 0.3, release: 1.5 },
       volume: -8,
     }).connect(reverb);
-    // Pink noise "heat haze" that swells as the data gets hotter.
-    this.noiseGain = new Tone.Gain(0).connect(this.master);
-    const haze = new Tone.Filter(900, "bandpass").connect(this.noiseGain);
-    new Tone.Noise("pink").connect(haze).start();
-    this.built = true;
+    this.hazeLevel = new Tone.Gain(0).connect(this.masterVolume);
+    const hazeBand = new Tone.Filter(900, "bandpass").connect(this.hazeLevel);
+    new Tone.Noise("pink").connect(hazeBand).start();
+    this.ready = true;
   }
 
-  setVolume(db: number) {
-    if (this.built) this.master.volume.rampTo(db, 0.1);
+  setVolume(decibels: number) {
+    if (this.ready) this.masterVolume.volume.rampTo(decibels, 0.1);
   }
 
-  /** Replaces whatever is scheduled with a new track, starting at `startIndex`. */
-  load(steps: Step[], stepSec: number, startIndex = 0) {
-    const t = this.transport;
-    t.stop();
-    t.cancel(0);
+  load(steps: SoundStep[], secondsPerStep: number, startStep = 0) {
+    const transport = this.transport;
+    transport.stop();
+    transport.cancel(0);
     this.steps = steps;
-    this.stepSec = stepSec;
-    const draw = Tone.getDraw();
-    steps.forEach((s, i) => {
-      t.schedule((time) => {
-        const each = stepSec / s.notes.length;
-        s.notes.forEach((n, h) => this.synth.triggerAttackRelease(n, Math.max(0.08, each * 0.9), time + h * each));
-        this.filter.frequency.rampTo(s.cutoff, Math.min(0.2, stepSec * 0.8), time);
-        this.noiseGain.gain.rampTo(s.heat * s.heat * 0.12, stepSec, time);
-        if (s.bass) this.bass.triggerAttackRelease(s.bass, stepSec * 2, time);
-        draw.schedule(() => {
-          this.onStep(i);
-          if (this.narrate && s.speak) speak(s.speak);
+    this.secondsPerStep = secondsPerStep;
+    const painter = Tone.getDraw();
+    steps.forEach((step, stepNumber) => {
+      transport.schedule((time) => {
+        const gap = secondsPerStep / Math.max(1, step.notes.length);
+        step.notes.forEach((note, order) =>
+          this.leadSynth.triggerAttackRelease(note, Math.max(0.08, gap * 0.9), time + order * gap),
+        );
+        step.zoneNotes?.forEach(({ voice, note }) =>
+          this.zoneSynths[voice].triggerAttackRelease(note, Math.max(0.08, secondsPerStep * 0.85), time),
+        );
+        this.toneFilter.frequency.rampTo(step.brightness, Math.min(0.2, secondsPerStep * 0.8), time);
+        this.hazeLevel.gain.rampTo(step.heat * step.heat * 0.12, secondsPerStep, time);
+        if (step.bassNote) this.bassSynth.triggerAttackRelease(step.bassNote, secondsPerStep * 2, time);
+        painter.schedule(() => {
+          this.onStep(stepNumber);
+          if (this.narrate && step.spokenWord) speakAloud(step.spokenWord);
         }, time);
-      }, i * stepSec);
+      }, stepNumber * secondsPerStep);
     });
-    t.schedule((time) => {
-      draw.schedule(() => {
+    transport.schedule((time) => {
+      painter.schedule(() => {
         this.stop();
         this.onEnd();
       }, time);
-    }, steps.length * stepSec);
-    t.seconds = startIndex * stepSec;
+    }, steps.length * secondsPerStep);
+    transport.seconds = startStep * secondsPerStep;
   }
 
   play() {
     if (this.steps.length) this.transport.start();
   }
+
   pause() {
     this.transport.pause();
     this.silence();
   }
+
   stop() {
     this.transport.stop();
     this.silence();
   }
-  seek(i: number) {
-    const clamped = Math.max(0, Math.min(this.steps.length - 1, i));
-    this.transport.seconds = clamped * this.stepSec;
-    this.onStep(clamped);
+
+  jumpTo(stepNumber: number) {
+    const safeStep = Math.max(0, Math.min(this.steps.length - 1, stepNumber));
+    this.transport.seconds = safeStep * this.secondsPerStep;
+    this.onStep(safeStep);
   }
+
+  startRecording() {
+    if (!this.ready || !this.canRecord) return false;
+    this.recorder = new Tone.Recorder();
+    this.masterVolume.connect(this.recorder);
+    this.recorder.start();
+    return true;
+  }
+
+  async finishRecording(): Promise<Blob | null> {
+    const recorder = this.recorder;
+    if (!recorder) return null;
+    this.recorder = null;
+    const recording = await recorder.stop();
+    this.masterVolume.disconnect(recorder);
+    recorder.dispose();
+    return recording;
+  }
+
+  get recording() {
+    return this.recorder !== null;
+  }
+
   private silence() {
-    if (!this.built) return;
-    this.synth.releaseAll();
-    this.noiseGain.gain.rampTo(0, 0.2);
+    if (!this.ready) return;
+    this.leadSynth.releaseAll();
+    Object.values(this.zoneSynths).forEach((synth) => synth.releaseAll());
+    this.hazeLevel.gain.rampTo(0, 0.2);
     window.speechSynthesis?.cancel();
   }
 }
 
-function speak(text: string) {
-  const s = window.speechSynthesis;
-  if (!s) return;
-  s.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 1.2;
-  u.volume = 0.8;
-  s.speak(u);
+function speakAloud(text: string) {
+  const speech = window.speechSynthesis;
+  if (!speech) return;
+  speech.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = 1.2;
+  utterance.volume = 0.8;
+  speech.speak(utterance);
 }
