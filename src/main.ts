@@ -4,6 +4,8 @@ import { ClimateChart } from "./chart";
 import {
   loadGlobalTemperature,
   loadPlace,
+  loadEarthRightNow,
+  loadLiveEarthRightNow,
   loadPolesAndTropics,
   searchPlaces,
   trendPerYear,
@@ -12,7 +14,7 @@ import {
   type Place,
   type TrackKind,
 } from "./data";
-import { SoundEngine, globalSteps, placeSteps, zoneSteps, type SoundStep } from "./sonify";
+import { SoundEngine, eventSteps, globalSteps, placeSteps, zoneSteps, type LeadSound, type SoundStep } from "./sonify";
 
 const examplePlaces = examplePlacesFile as Place[];
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -21,6 +23,7 @@ const page = {
     global: element("tab-global"),
     zones: element("tab-zones"),
     place: element("tab-place"),
+    events: element("tab-events"),
   } as Record<TrackKind, HTMLElement>,
   placeTools: element("place-tools"),
   searchForm: element<HTMLFormElement>("search"),
@@ -36,6 +39,8 @@ const page = {
   nowLabel: element("now-label"),
   nowValue: element("now-value"),
   speedPicker: element<HTMLSelectElement>("speed"),
+  instrumentPicker: element<HTMLSelectElement>("instrument"),
+  loopToggle: element<HTMLInputElement>("loop"),
   narrateToggle: element<HTMLInputElement>("narrate"),
   volumeSlider: element<HTMLInputElement>("vol"),
   status: element("status"),
@@ -45,7 +50,7 @@ const page = {
   source: element("source"),
 };
 
-const secondsPerStepAtNormalSpeed: Record<TrackKind, number> = { global: 0.5, zones: 0.5, place: 0.25 };
+const secondsPerStepAtNormalSpeed: Record<TrackKind, number> = { global: 0.5, zones: 0.5, place: 0.25, events: 0.4 };
 
 const engine = new SoundEngine();
 const chart = new ClimateChart(element("chart"));
@@ -74,21 +79,21 @@ async function showTrack(loadTrack: () => Promise<ClimateTrack>) {
   page.playButton.disabled = true;
   page.recordButton.disabled = true;
   page.downloadLink.hidden = true;
-  page.status.textContent = "Fetching NASA data…";
+  page.status.textContent = "Loading…";
   try {
     const loaded = await loadTrack();
     if (request !== latestRequest) return;
     track = loaded;
-    steps =
-      loaded.kind === "global" ? globalSteps(loaded.points) : loaded.kind === "zones" ? zoneSteps(loaded.points) : placeSteps(loaded.points);
+    const stepMakers = { global: globalSteps, zones: zoneSteps, place: placeSteps, events: eventSteps };
+    steps = stepMakers[loaded.kind](loaded.points);
     currentStep = 0;
     page.title.textContent = loaded.title;
-    page.source.textContent = `Source: ${loaded.source}`;
+    page.source.textContent = loaded.source;
     chart.render(loaded);
     describeSound(loaded);
     describeFindings(loaded);
     showReadout(0);
-    page.status.textContent = loaded.fromBackup ? "Showing a saved copy of the data, so the demo keeps working offline." : "";
+    page.status.textContent = loaded.fromBackup ? "Saved copy" : "";
     page.playButton.disabled = false;
     page.recordButton.disabled = !engine.canRecord;
   } catch (problem) {
@@ -99,8 +104,9 @@ async function showTrack(loadTrack: () => Promise<ClimateTrack>) {
 }
 
 function friendlyError() {
-  if (activeTab === "place") return "Couldn't reach NASA POWER for this place. Try again, or pick one of the example places.";
-  return "Couldn't load the NASA temperature record. Run `npm run data` once to save it into public/data/.";
+  if (activeTab === "place") return "Couldn't reach NASA POWER. Try an example city.";
+  if (activeTab === "events") return "Couldn't reach NASA EONET.";
+  return "Couldn't load NASA data.";
 }
 
 function openTab(kind: TrackKind) {
@@ -111,8 +117,22 @@ function openTab(kind: TrackKind) {
     openPlace(placeFromAddress() ?? examplePlaces[0]);
     return;
   }
-  history.replaceState(null, "", kind === "zones" ? "#track=zones" : location.pathname + location.search);
-  showTrack(kind === "zones" ? loadPolesAndTropics : loadGlobalTemperature);
+  history.replaceState(null, "", kind === "global" ? location.pathname + location.search : `#track=${kind}`);
+  const loaders = { global: loadGlobalTemperature, zones: loadPolesAndTropics, events: loadEarthRightNow };
+  showTrack(loaders[kind]).then(() => {
+    if (kind === "events") refreshWithLiveEvents();
+  });
+}
+
+async function refreshWithLiveEvents() {
+  const request = latestRequest;
+  try {
+    const live = await loadLiveEarthRightNow();
+    if (request !== latestRequest || scheduled || engine.recording) return;
+    await showTrack(async () => live);
+  } catch (problem) {
+    console.error(problem);
+  }
 }
 
 function openPlace(place: Place) {
@@ -145,24 +165,31 @@ function placeFromAddress(): Place | null {
 function describeSound(shown: ClimateTrack) {
   const guide: Record<TrackKind, [string, string][]> = {
     global: [
-      ["Each note", "one year (half a second at 1× speed)"],
-      ["Pitch", "global temperature anomaly: higher means hotter"],
-      ["Brightness and hiss", "rise with the anomaly, like a heat haze"],
-      ["Low bass note", "the start of each decade"],
+      ["Note", "one year"],
+      ["Pitch", "temperature"],
+      ["Hiss", "heat"],
+      ["Bass", "new decade"],
     ],
     zones: [
-      ["Each chord", "one year, three regions of Earth at once"],
-      ["Left ear", "the Arctic (64°N–90°N), a bright plucked tone"],
-      ["Centre", "the Tropics (24°S–24°N), a soft round tone"],
-      ["Right ear", "the Antarctic (64°S–90°S), a buzzy tone"],
-      ["Pitch", "all three share one scale, so you hear the Arctic climb away from the others"],
+      ["Left", "Arctic"],
+      ["Centre", "Tropics"],
+      ["Right", "Antarctic"],
+      ["Pitch", "temperature"],
     ],
     place: [
-      ["Each beat", "one month (a quarter second at 1× speed)"],
-      ["Pitch", "air temperature at 2 m (T2M)"],
-      ["Number of notes", "rainfall (PRECTOTCORR): rainy months patter with up to 4 notes"],
-      ["Brightness", "sunshine reaching the ground (ALLSKY_SFC_SW_DWN): cloudy months sound muffled"],
-      ["Low bass note", "every January"],
+      ["Beat", "one month"],
+      ["Pitch", "temperature"],
+      ["Notes", "rain"],
+      ["Brightness", "sunshine"],
+      ["Bass", "January"],
+    ],
+    events: [
+      ["Beat", "one day"],
+      ["Crackle", "wildfire"],
+      ["Drum", "storm · volcano"],
+      ["Bell", "ice · snow"],
+      ["Pluck", "other"],
+      ["Left ↔ right", "west ↔ east"],
     ],
   };
   page.soundGuide.innerHTML = guide[shown.kind].map(([what, how]) => `<li><b>${what}</b>: ${how}</li>`).join("");
@@ -182,29 +209,33 @@ function describeFindings(shown: ClimateTrack) {
     const since1980 = points.filter((point) => point.position >= 1980);
     const decadeTrend =
       trendPerYear(since1980.map((point) => point.position), since1980.map((point) => point.temperature)) * 10;
-    findings.push(`The last 10 years averaged <b>${withSign(warmingSinceStart(points, (point) => point.temperature))} °C</b> warmer than ${points[0].position}–1909.`);
-    findings.push(`Warmest year on record: <b>${warmest.label}</b> (${withSign(warmest.temperature)} °C vs 1951–1980).`);
-    findings.push(`Since 1980 the planet has warmed about <b>${withSign(decadeTrend)} °C per decade</b>.`);
+    findings.push(`<b>${withSign(warmingSinceStart(points, (point) => point.temperature))} °C</b> since 1880–1909`);
+    findings.push(`Warmest year: <b>${warmest.label}</b>`);
+    findings.push(`<b>${withSign(decadeTrend)} °C</b> per decade since 1980`);
   } else if (shown.kind === "zones") {
     const arctic = warmingSinceStart(points, (point) => point.arctic);
     const tropics = warmingSinceStart(points, (point) => point.tropics);
     const antarctic = warmingSinceStart(points, (point) => point.antarctic);
     const planet = warmingSinceStart(points, (point) => point.temperature);
-    findings.push(`The Arctic has warmed <b>${withSign(arctic)} °C</b> since 1880–1909, about <b>${(arctic / planet).toFixed(1)}×</b> the global ${withSign(planet)} °C.`);
-    findings.push(`The Tropics warmed <b>${withSign(tropics)} °C</b> and the Antarctic <b>${withSign(antarctic)} °C</b> over the same span.`);
-    findings.push(`Scientists call this <b>Arctic amplification</b>: melting ice uncovers dark ocean that soaks up more sunlight.`);
+    findings.push(`Arctic <b>${withSign(arctic)} °C</b>, <b>${(arctic / planet).toFixed(1)}×</b> the global rate`);
+    findings.push(`Tropics <b>${withSign(tropics)} °C</b> · Antarctic <b>${withSign(antarctic)} °C</b>`);
+  } else if (shown.kind === "events") {
+    const countOf = (category: string) => shown.eventTotals?.[category] ?? 0;
+    const busiest = points.reduce((best, point) => (point.temperature > best.temperature ? point : best));
+    findings.push(`Wildfires <b>${countOf("wildfires")}</b> · Storms <b>${countOf("severeStorms")}</b> · Floods <b>${countOf("floods")}</b> · Volcanoes <b>${countOf("volcanoes")}</b>`);
+    findings.push(`Busiest day: <b>${busiest.label}</b> (${busiest.temperature})`);
   } else {
     const years = yearlyAverages(points);
     if (years.length >= 5) {
       const decadeTrend = trendPerYear(years.map((entry) => entry.year), years.map((entry) => entry.temperature)) * 10;
       const warmestYear = years.reduce((best, entry) => (entry.temperature > best.temperature ? entry : best));
-      findings.push(`Trend: <b>${withSign(decadeTrend)} °C per decade</b> (${years[0].year}–${years[years.length - 1].year}, yearly averages).`);
-      findings.push(`Warmest year here: <b>${warmestYear.year}</b>, averaging ${oneDecimal(warmestYear.temperature)} °C.`);
+      findings.push(`<b>${withSign(decadeTrend)} °C</b> per decade`);
+      findings.push(`Warmest year: <b>${warmestYear.year}</b>`);
     }
     const wettest = points.reduce((best, point) => ((point.rainfall ?? -1) > (best.rainfall ?? -1) ? point : best));
     const hottest = points.reduce((best, point) => (point.temperature > best.temperature ? point : best));
-    findings.push(`Hottest month: <b>${hottest.label}</b> at ${oneDecimal(hottest.temperature)} °C.`);
-    findings.push(`Wettest month: <b>${wettest.label}</b>, ${oneDecimal(wettest.rainfall)} mm of rain per day.`);
+    findings.push(`Hottest month: <b>${hottest.label}</b>`);
+    findings.push(`Wettest month: <b>${wettest.label}</b>`);
   }
   page.findings.innerHTML = findings.map((finding) => `<li>${finding}</li>`).join("");
 }
@@ -217,9 +248,11 @@ function showReadout(stepNumber: number) {
   page.nowValue.textContent =
     track.kind === "global"
       ? `${withSign(point.temperature)} °C`
-      : track.kind === "zones"
-        ? `Arctic ${withSign(point.arctic ?? NaN)} · Tropics ${withSign(point.tropics ?? NaN)} · Antarctic ${withSign(point.antarctic ?? NaN)} °C`
-        : `${oneDecimal(point.temperature)} °C · rain ${oneDecimal(point.rainfall)} mm/day · sun ${oneDecimal(point.sunshine, 2)} kWh/m²/day`;
+      : track.kind === "events"
+        ? `${point.temperature} events${point.headlines?.length ? ` · ${point.headlines.slice(0, 2).join(" · ")}` : ""}`
+        : track.kind === "zones"
+        ? `${withSign(point.arctic ?? NaN)} · ${withSign(point.tropics ?? NaN)} · ${withSign(point.antarctic ?? NaN)} °C`
+        : `${oneDecimal(point.temperature)} °C · ${oneDecimal(point.rainfall)} mm · ${oneDecimal(point.sunshine)} kWh`;
   chart.movePlayhead(stepNumber);
 }
 
@@ -232,10 +265,11 @@ async function prepareAudio() {
   try {
     await engine.init();
     engine.setVolume(Number(page.volumeSlider.value));
+    engine.useLeadSound(page.instrumentPicker.value as LeadSound);
     return true;
   } catch (problem) {
     console.error(problem);
-    page.status.textContent = "This browser blocked audio. Click play again, or try Chrome or Firefox.";
+    page.status.textContent = "Audio blocked. Tap play again.";
     return false;
   }
 }
@@ -268,18 +302,18 @@ async function recordFromStart() {
   engine.load(steps, secondsPerStep(), 0);
   scheduled = true;
   if (!engine.startRecording()) {
-    page.status.textContent = "Recording isn't supported in this browser.";
+    page.status.textContent = "Recording not supported.";
     return;
   }
-  page.recordButton.textContent = "⏹ Stop recording";
-  page.status.textContent = "Recording… the song downloads when it ends or when you stop.";
+  page.recordButton.textContent = "⏹ Stop";
+  page.status.textContent = "Recording…";
   engine.play();
   showPlaying(true);
 }
 
 async function stopRecordingIfNeeded() {
   if (!engine.recording) return;
-  page.recordButton.textContent = "⏺ Record song";
+  page.recordButton.textContent = "⏺ Record";
   const recording = await engine.finishRecording();
   if (!recording || !track) return;
   if (page.downloadLink.href) URL.revokeObjectURL(page.downloadLink.href);
@@ -287,7 +321,7 @@ async function stopRecordingIfNeeded() {
   page.downloadLink.href = URL.createObjectURL(recording);
   page.downloadLink.download = `earth-in-sound-${fileName}.webm`;
   page.downloadLink.hidden = false;
-  page.status.textContent = "Your recording is ready to download.";
+  page.status.textContent = "";
 }
 
 function jumpTo(stepNumber: number) {
@@ -299,9 +333,14 @@ function jumpTo(stepNumber: number) {
 
 engine.onStep = showReadout;
 engine.onEnd = () => {
+  if (page.loopToggle.checked && !engine.recording) {
+    engine.load(steps, secondsPerStep(), 0);
+    engine.play();
+    return;
+  }
   showPlaying(false);
   scheduled = false;
-  page.status.textContent = "Finished. Press play to hear it again.";
+  page.status.textContent = "";
   stopRecordingIfNeeded();
 };
 chart.onJump = jumpTo;
@@ -309,6 +348,7 @@ chart.onJump = jumpTo;
 page.playButton.addEventListener("click", togglePlay);
 page.recordButton.addEventListener("click", recordFromStart);
 page.restartButton.addEventListener("click", () => jumpTo(0));
+page.instrumentPicker.addEventListener("change", () => engine.useLeadSound(page.instrumentPicker.value as LeadSound));
 page.narrateToggle.addEventListener("change", () => (engine.narrate = page.narrateToggle.checked));
 page.volumeSlider.addEventListener("input", () => engine.setVolume(Number(page.volumeSlider.value)));
 page.speedPicker.addEventListener("change", () => {
@@ -348,19 +388,19 @@ page.searchForm.addEventListener("submit", async (event) => {
   page.searchResults.innerHTML = "<li class='muted'>Searching…</li>";
   try {
     const found = await searchPlaces(query);
-    page.searchResults.innerHTML = found.length ? "" : "<li class='muted'>No places found.</li>";
+    page.searchResults.innerHTML = found.length ? "" : "<li class='muted'>No results</li>";
     page.searchResults.append(...found.map(placeChip));
   } catch {
-    page.searchResults.innerHTML = "<li class='muted'>Search is unavailable right now. Try an example place.</li>";
+    page.searchResults.innerHTML = "<li class='muted'>Search unavailable</li>";
   }
 });
 
 page.nearMeButton.addEventListener("click", () => {
   if (!navigator.geolocation) return;
-  page.status.textContent = "Finding you…";
+  page.status.textContent = "Locating…";
   navigator.geolocation.getCurrentPosition(
     (position) => openPlace({ name: "My location", latitude: position.coords.latitude, longitude: position.coords.longitude }),
-    () => (page.status.textContent = "Location permission was denied. Search for your city instead."),
+    () => (page.status.textContent = "Location denied"),
   );
 });
 
@@ -373,11 +413,11 @@ showConnection();
 
 window.addEventListener("error", (event) => {
   console.error(event.error ?? event.message);
-  page.status.textContent = "Something went wrong, but the app is still running. Try play again or switch tracks.";
+  page.status.textContent = "Something went wrong. Try again.";
 });
 window.addEventListener("unhandledrejection", (event) => {
   console.error(event.reason);
-  page.status.textContent = "A request failed, but the app is still running. Saved data will be used where possible.";
+  page.status.textContent = "Network issue. Using saved data.";
 });
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
@@ -385,4 +425,5 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 }
 
 const startingAddress = new URLSearchParams(location.hash.slice(1));
-openTab(placeFromAddress() ? "place" : startingAddress.get("track") === "zones" ? "zones" : "global");
+const requestedTrack = startingAddress.get("track");
+openTab(placeFromAddress() ? "place" : requestedTrack === "zones" || requestedTrack === "events" ? requestedTrack : "global");

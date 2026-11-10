@@ -75,6 +75,31 @@ try {
   console.error(`✗ GISTEMP zones failed: ${error.message}`);
 }
 
+try {
+  const eonetUrl = "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&days=60";
+  const body = await (await download(eonetUrl)).json();
+  const pointFor = (geometry) => {
+    if (geometry.type === "Point") return geometry.coordinates;
+    const ring = geometry.coordinates[0] ?? [];
+    const centre = (axis) => ring.reduce((sum, corner) => sum + corner[axis], 0) / Math.max(1, ring.length);
+    return [centre(0), centre(1)];
+  };
+  const events = body.events.map((event) => ({
+    title: event.title,
+    categories: event.categories.slice(0, 1).map((category) => ({ id: category.id })),
+    geometry: event.geometry.map((geometry) => ({
+      date: geometry.date,
+      type: "Point",
+      coordinates: pointFor(geometry).map((value) => Math.round(value * 100) / 100),
+    })),
+  }));
+  await saveJson("eonet.json", { source: eonetUrl, events });
+  console.log(`✓ EONET: ${body.events.length} events in the last 60 days`);
+} catch (error) {
+  failedDownloads++;
+  console.error(`✗ EONET failed: ${error.message}`);
+}
+
 const currentYear = new Date().getFullYear();
 for (const place of examplePlaces) {
   let saved = false;

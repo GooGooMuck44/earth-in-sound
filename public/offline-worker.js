@@ -1,13 +1,14 @@
-const cacheName = "earth-in-sound-v2";
+const cacheName = "earth-in-sound-v3";
 const examplePlaces = ["new-york", "london", "lagos", "delhi", "kathmandu", "tokyo", "sao-paulo", "sydney"];
 const startupFiles = [
   "./",
   "./index.html",
   "./data/gistemp.json",
   "./data/zones.json",
+  "./data/eonet.json",
   ...examplePlaces.map((slug) => `./data/places/${slug}.json`),
 ];
-const trustedHosts = ["power.larc.nasa.gov", "geocoding-api.open-meteo.com"];
+const trustedHosts = ["power.larc.nasa.gov", "geocoding-api.open-meteo.com", "eonet.gsfc.nasa.gov"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

@@ -1,4 +1,4 @@
-export type TrackKind = "global" | "zones" | "place";
+export type TrackKind = "global" | "zones" | "place" | "events";
 
 export interface ClimatePoint {
   position: number;
@@ -9,6 +9,14 @@ export interface ClimatePoint {
   arctic?: number;
   tropics?: number;
   antarctic?: number;
+  happenings?: EventGroup[];
+  headlines?: string[];
+}
+
+export interface EventGroup {
+  category: string;
+  count: number;
+  longitude: number;
 }
 
 export interface ClimateTrack {
@@ -17,6 +25,7 @@ export interface ClimateTrack {
   source: string;
   points: ClimatePoint[];
   fromBackup?: boolean;
+  eventTotals?: Record<string, number>;
 }
 
 export interface Place {
@@ -90,8 +99,8 @@ export async function loadGlobalTemperature(): Promise<ClimateTrack> {
   if (!years?.length) throw new Error("GISTEMP data is missing");
   return {
     kind: "global",
-    title: `Global temperature, ${years[0].year}–${years[years.length - 1].year}`,
-    source: "NASA GISS Surface Temperature Analysis (GISTEMP v4), anomaly vs 1951–1980",
+    title: `Global temperature ${years[0].year}–${years[years.length - 1].year}`,
+    source: "NASA GISTEMP v4 · vs 1951–1980",
     points: years.map((entry) => ({ position: entry.year, label: String(entry.year), temperature: entry.anomaly })),
     fromBackup,
   };
@@ -117,8 +126,8 @@ export async function loadPolesAndTropics(): Promise<ClimateTrack> {
   if (!years?.length) throw new Error("Zonal GISTEMP data is missing");
   return {
     kind: "zones",
-    title: `Arctic, Tropics and Antarctic, ${years[0].year}–${years[years.length - 1].year}`,
-    source: "NASA GISS GISTEMP v4 zonal annual means (64N–90N, 24S–24N, 90S–64S), anomaly vs 1951–1980",
+    title: `Poles vs Tropics ${years[0].year}–${years[years.length - 1].year}`,
+    source: "NASA GISTEMP v4 zonal · vs 1951–1980",
     points: years.map((entry) => ({
       position: entry.year,
       label: String(entry.year),
@@ -129,6 +138,87 @@ export async function loadPolesAndTropics(): Promise<ClimateTrack> {
     })),
     fromBackup,
   };
+}
+
+export const eonetUrl = "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&days=60";
+const eventWindowDays = 60;
+
+interface EonetEvent {
+  title: string;
+  categories: { id: string }[];
+  geometry: { date: string; type: string; coordinates: unknown }[];
+}
+
+function centreLongitude(geometry: EonetEvent["geometry"][number]): number {
+  if (geometry.type === "Point") return (geometry.coordinates as number[])[0];
+  const ring = (geometry.coordinates as number[][][])[0] ?? [];
+  return ring.length ? ring.reduce((sum, corner) => sum + corner[0], 0) / ring.length : 0;
+}
+
+export function eventDays(events: EonetEvent[], today = new Date()): ClimatePoint[] {
+  const dayKey = (date: Date) => date.toISOString().slice(0, 10);
+  const days = new Map<string, { groups: Map<string, { titles: Set<string>; longitudes: number[] }>; headlines: Set<string> }>();
+  for (let back = eventWindowDays - 1; back >= 0; back--) {
+    days.set(dayKey(new Date(today.getTime() - back * 86400000)), { groups: new Map(), headlines: new Set() });
+  }
+  for (const event of events) {
+    const category = event.categories[0]?.id ?? "other";
+    for (const geometry of event.geometry) {
+      const day = days.get(geometry.date.slice(0, 10));
+      if (!day) continue;
+      const group = day.groups.get(category) ?? { titles: new Set<string>(), longitudes: [] };
+      if (group.titles.has(event.title)) continue;
+      group.titles.add(event.title);
+      group.longitudes.push(centreLongitude(geometry));
+      day.groups.set(category, group);
+      day.headlines.add(event.title);
+    }
+  }
+  return [...days].map(([key, day], order) => {
+    const happenings = [...day.groups].map(([category, group]) => ({
+      category,
+      count: group.titles.size,
+      longitude: group.longitudes.reduce((sum, value) => sum + value, 0) / group.longitudes.length,
+    }));
+    const date = new Date(`${key}T12:00:00Z`);
+    return {
+      position: order,
+      label: `${date.getUTCDate()} ${monthNames[date.getUTCMonth()]}`,
+      temperature: happenings.reduce((sum, group) => sum + group.count, 0),
+      happenings,
+      headlines: [...day.headlines],
+    };
+  });
+}
+
+function eventTrack(events: EonetEvent[], live: boolean): ClimateTrack {
+  const newest = events.flatMap((event) => event.geometry.map((geometry) => geometry.date)).sort().at(-1);
+  const eventTotals: Record<string, number> = {};
+  for (const event of events) {
+    const category = event.categories[0]?.id ?? "other";
+    eventTotals[category] = (eventTotals[category] ?? 0) + 1;
+  }
+  return {
+    kind: "events",
+    eventTotals,
+    title: "Earth right now · last 60 days",
+    source: live ? "NASA EONET · live" : `NASA EONET · saved ${newest?.slice(0, 10) ?? ""}`,
+    points: eventDays(events, !live && newest ? new Date(newest) : new Date()),
+  };
+}
+
+export async function loadLiveEarthRightNow(): Promise<ClimateTrack> {
+  const response = await fetchWithTimeout(eonetUrl, 45000);
+  if (!response.ok) throw new Error(`EONET HTTP ${response.status}`);
+  const events: EonetEvent[] = (await response.json()).events;
+  if (!events?.length) throw new Error("EONET returned no events");
+  return eventTrack(events, true);
+}
+
+export async function loadEarthRightNow(): Promise<ClimateTrack> {
+  const saved = (await loadBundledJson<{ events: EonetEvent[] }>("eonet.json"))?.events;
+  if (saved?.length) return eventTrack(saved, false);
+  return loadLiveEarthRightNow();
 }
 
 export function powerUrl(latitude: number, longitude: number, firstYear: number, lastYear: number): string {
@@ -205,17 +295,17 @@ export async function loadPlace(place: Place, examples: Place[] = []): Promise<C
     keepSavedCopy(placeKey(place), table);
   } catch (liveError) {
     table = readSavedCopy<PowerTable>(placeKey(place));
-    if (table) backupNote = " (saved on this device)";
+    if (table) backupNote = " · saved copy";
     if (!table && place.slug) {
       table = (await loadBundledJson<{ parameter: PowerTable }>(`places/${place.slug}.json`))?.parameter ?? null;
-      if (table) backupNote = " (saved copy)";
+      if (table) backupNote = " · saved copy";
     }
     if (!table && examples.length) {
       const fallback = nearestExample(place, examples);
       table = (await loadBundledJson<{ parameter: PowerTable }>(`places/${fallback.slug}.json`))?.parameter ?? null;
       if (table) {
         shownPlace = fallback;
-        backupNote = ` (NASA POWER was unreachable, so this is the nearest saved city, ${fallback.name})`;
+        backupNote = ` · offline, nearest saved city`;
       }
     }
     if (!table) throw liveError;
@@ -225,8 +315,8 @@ export async function loadPlace(place: Place, examples: Place[] = []): Promise<C
   const displayName = shownPlace.country ? `${shownPlace.name}, ${shownPlace.country}` : shownPlace.name;
   return {
     kind: "place",
-    title: `${displayName}: ${Math.floor(points[0].position)}–${Math.floor(points[points.length - 1].position)}`,
-    source: `NASA POWER monthly T2M, PRECTOTCORR, ALLSKY_SFC_SW_DWN at ${shownPlace.latitude.toFixed(2)}, ${shownPlace.longitude.toFixed(2)}${backupNote}`,
+    title: `${displayName} ${Math.floor(points[0].position)}–${Math.floor(points[points.length - 1].position)}`,
+    source: `NASA POWER · ${shownPlace.latitude.toFixed(2)}, ${shownPlace.longitude.toFixed(2)}${backupNote}`,
     points,
     fromBackup: Boolean(backupNote),
   };
