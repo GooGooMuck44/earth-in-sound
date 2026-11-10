@@ -17,10 +17,10 @@
 
     <main class="wrap">
       <nav class="tabs" role="tablist" aria-label="Tracks">
-        <button role="tab" id="tab-global" aria-selected="true" aria-controls="panel">Planet since 1880</button>
-        <button role="tab" id="tab-zones" aria-selected="false" aria-controls="panel">Poles vs Tropics</button>
-        <button role="tab" id="tab-place" aria-selected="false" aria-controls="panel">My Place</button>
-        <button role="tab" id="tab-events" aria-selected="false" aria-controls="panel">Earth right now</button>
+        <button role="tab" id="tab-global" aria-selected="true" aria-controls="panel" tabindex="0">Planet since 1880</button>
+        <button role="tab" id="tab-zones" aria-selected="false" aria-controls="panel" tabindex="-1">Poles vs Tropics</button>
+        <button role="tab" id="tab-place" aria-selected="false" aria-controls="panel" tabindex="-1">My Place</button>
+        <button role="tab" id="tab-events" aria-selected="false" aria-controls="panel" tabindex="-1">Earth right now</button>
       </nav>
 
       <section id="panel" role="tabpanel">
@@ -52,7 +52,7 @@
               <option value="4">4×</option>
             </select>
           </label>
-          <label class="ctl" aria-label="Instrument">
+          <label id="instrument-control" class="ctl" aria-label="Instrument">
             <select id="instrument">
               <option value="glass" selected>Glass</option>
               <option value="piano">Piano</option>
@@ -65,6 +65,10 @@
           <label class="ctl" aria-label="Volume">🔊 <input type="range" id="vol" min="-40" max="0" value="-6" /></label>
           <button id="record" class="ghost record" disabled>⏺ Record</button>
           <a id="download" class="download" hidden>⬇ Save</a>
+        </div>
+        <div class="listening-notes" role="note">
+          <span id="first-listen-hint">Press ▶ to listen.</span>
+          <span id="headphones-hint" hidden>🎧 Use headphones</span>
         </div>
 
         <div id="chart" class="chart" aria-label="Chart. Click to jump to a point in time."></div>
