@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Hear 145 years of global warming and your own city's climate, made from NASA data." />
+    <meta name="description" content="Hear 146 years of global warming and your own city's climate, made from NASA data." />
     <title>Earth in Sound</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
   </head>
@@ -13,9 +13,12 @@
       <p class="tag">Listen to NASA climate data. Warmer means higher notes and brighter sound.</p>
     </header>
 
+    <p id="connection" class="connection wrap" hidden>You're offline. Saved NASA data is still playable.</p>
+
     <main class="wrap">
       <nav class="tabs" role="tablist" aria-label="Tracks">
         <button role="tab" id="tab-global" aria-selected="true" aria-controls="panel">Planet since 1880</button>
+        <button role="tab" id="tab-zones" aria-selected="false" aria-controls="panel">Poles vs Tropics</button>
         <button role="tab" id="tab-place" aria-selected="false" aria-controls="panel">My Place</button>
       </nav>
 
@@ -50,6 +53,8 @@
           </label>
           <label class="ctl"><input type="checkbox" id="narrate" /> Say the years</label>
           <label class="ctl">Volume <input type="range" id="vol" min="-40" max="0" value="-6" /></label>
+          <button id="record" class="ghost record" disabled>⏺ Record song</button>
+          <a id="download" class="download" hidden>⬇ Download recording</a>
         </div>
 
         <div id="chart" class="chart" aria-label="Chart. Click to jump to a point in time."></div>
@@ -70,7 +75,7 @@
     </main>
 
     <footer class="wrap">
-      Data: NASA GISS GISTEMP v4 and NASA Langley POWER. Place search by Open-Meteo. Sound by Tone.js.
+      Data: NASA GISS GISTEMP v4 (global and zonal) and NASA Langley POWER. Place search by Open-Meteo. Sound by Tone.js.
       Built for the NASA Space Apps Challenge 2026.
     </footer>
     <script type="module" src="/src/main.ts"></script>

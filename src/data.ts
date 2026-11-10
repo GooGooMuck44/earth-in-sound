@@ -1,200 +1,272 @@
-// Loading NASA data in the browser.
-// Every loader tries the live NASA API first (when the API allows browser requests),
-// then falls back to the copy saved by `npm run data` in public/data/.
+export type TrackKind = "global" | "zones" | "place";
 
-export interface Point {
-  x: number; // chart x: a year (global) or fractional year (monthly)
-  label: string; // "1998" or "Mar 2015"
-  temp: number; // °C anomaly (global) or °C (place)
-  rain?: number; // mm/day
-  sun?: number; // kWh/m²/day
+export interface ClimatePoint {
+  position: number;
+  label: string;
+  temperature: number;
+  rainfall?: number;
+  sunshine?: number;
+  arctic?: number;
+  tropics?: number;
+  antarctic?: number;
 }
 
-export interface Dataset {
-  kind: "global" | "place";
+export interface ClimateTrack {
+  kind: TrackKind;
   title: string;
   source: string;
-  points: Point[];
+  points: ClimatePoint[];
+  fromBackup?: boolean;
 }
 
 export interface Place {
   slug?: string;
   name: string;
   country?: string;
-  lat: number;
-  lon: number;
+  latitude: number;
+  longitude: number;
 }
 
-const BASE = import.meta.env.BASE_URL;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const siteRoot = import.meta.env.BASE_URL;
+const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const requestTimeoutMs = 12000;
 
-// ---------- GISTEMP (global temperature anomaly since 1880) ----------
+export const powerParameters = "T2M,PRECTOTCORR,ALLSKY_SFC_SW_DWN";
+export const powerFirstYear = 2001;
 
-export const GISTEMP_CSV = "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv";
+export async function fetchWithTimeout(url: string, timeoutMs = requestTimeoutMs): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
-/** Parses NASA GISS GLB.Ts+dSST.csv into yearly J-D anomalies (°C vs 1951–1980). */
-export function parseGistempCsv(csv: string): { year: number; anomaly: number }[] {
-  const lines = csv.split(/\r?\n/);
-  const headerIdx = lines.findIndex((l) => l.startsWith("Year,"));
-  if (headerIdx < 0) throw new Error("Unexpected GISTEMP format");
-  const cols = lines[headerIdx].split(",");
-  const jd = cols.indexOf("J-D");
-  const out: { year: number; anomaly: number }[] = [];
-  for (const line of lines.slice(headerIdx + 1)) {
-    const c = line.split(",");
-    const year = Number(c[0]);
-    const v = Number(c[jd]);
-    if (Number.isFinite(year) && c[jd] && c[jd] !== "***" && Number.isFinite(v)) {
-      out.push({ year, anomaly: v });
+function readSavedCopy<T>(key: string): T | null {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? (JSON.parse(saved) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+function keepSavedCopy(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    try {
+      Object.keys(localStorage)
+        .filter((existingKey) => existingKey.startsWith("earth-in-sound:place:"))
+        .forEach((existingKey) => localStorage.removeItem(existingKey));
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      return;
     }
   }
-  return out;
 }
 
-export async function loadGistemp(): Promise<Dataset> {
-  let years: { year: number; anomaly: number }[] | null = null;
+async function loadBundledJson<T>(path: string): Promise<T | null> {
   try {
-    const r = await fetch(`${BASE}data/gistemp.json`);
-    if (r.ok) years = (await r.json()).years;
+    const response = await fetchWithTimeout(`${siteRoot}data/${path}`);
+    return response.ok ? ((await response.json()) as T) : null;
   } catch {
-    /* fall through to live */
+    return null;
   }
-  if (!years) {
-    // Usually blocked by CORS in browsers, but worth a try.
-    const r = await fetch(GISTEMP_CSV);
-    if (!r.ok) throw new Error(`GISTEMP HTTP ${r.status}`);
-    years = parseGistempCsv(await r.text());
+}
+
+export async function loadGlobalTemperature(): Promise<ClimateTrack> {
+  type GistempFile = { years: { year: number; anomaly: number }[] };
+  let years = (await loadBundledJson<GistempFile>("gistemp.json"))?.years ?? null;
+  let fromBackup = false;
+  if (years?.length) {
+    keepSavedCopy("earth-in-sound:gistemp", years);
+  } else {
+    years = readSavedCopy<{ year: number; anomaly: number }[]>("earth-in-sound:gistemp");
+    fromBackup = true;
   }
-  if (!years.length) throw new Error("GISTEMP data is empty");
+  if (!years?.length) throw new Error("GISTEMP data is missing");
   return {
     kind: "global",
     title: `Global temperature, ${years[0].year}–${years[years.length - 1].year}`,
     source: "NASA GISS Surface Temperature Analysis (GISTEMP v4), anomaly vs 1951–1980",
-    points: years.map((y) => ({ x: y.year, label: String(y.year), temp: y.anomaly })),
+    points: years.map((entry) => ({ position: entry.year, label: String(entry.year), temperature: entry.anomaly })),
+    fromBackup,
   };
 }
 
-// ---------- NASA POWER (monthly climate for any point on Earth) ----------
+interface ZoneYear {
+  year: number;
+  global: number;
+  arctic: number;
+  tropics: number;
+  antarctic: number;
+}
 
-export const POWER_PARAMS = "T2M,PRECTOTCORR,ALLSKY_SFC_SW_DWN";
-export const POWER_START = 2001;
+export async function loadPolesAndTropics(): Promise<ClimateTrack> {
+  let years = (await loadBundledJson<{ years: ZoneYear[] }>("zones.json"))?.years ?? null;
+  let fromBackup = false;
+  if (years?.length) {
+    keepSavedCopy("earth-in-sound:zones", years);
+  } else {
+    years = readSavedCopy<ZoneYear[]>("earth-in-sound:zones");
+    fromBackup = true;
+  }
+  if (!years?.length) throw new Error("Zonal GISTEMP data is missing");
+  return {
+    kind: "zones",
+    title: `Arctic, Tropics and Antarctic, ${years[0].year}–${years[years.length - 1].year}`,
+    source: "NASA GISS GISTEMP v4 zonal annual means (64N–90N, 24S–24N, 90S–64S), anomaly vs 1951–1980",
+    points: years.map((entry) => ({
+      position: entry.year,
+      label: String(entry.year),
+      temperature: entry.global,
+      arctic: entry.arctic,
+      tropics: entry.tropics,
+      antarctic: entry.antarctic,
+    })),
+    fromBackup,
+  };
+}
 
-export function powerUrl(lat: number, lon: number, start: number, end: number): string {
-  const q = new URLSearchParams({
-    parameters: POWER_PARAMS,
+export function powerUrl(latitude: number, longitude: number, firstYear: number, lastYear: number): string {
+  const query = new URLSearchParams({
+    parameters: powerParameters,
     community: "AG",
-    latitude: lat.toFixed(4),
-    longitude: lon.toFixed(4),
-    start: String(start),
-    end: String(end),
+    latitude: latitude.toFixed(4),
+    longitude: longitude.toFixed(4),
+    start: String(firstYear),
+    end: String(lastYear),
     format: "JSON",
   });
-  return `https://power.larc.nasa.gov/api/temporal/monthly/point?${q}`;
+  return `https://power.larc.nasa.gov/api/temporal/monthly/point?${query}`;
 }
 
-type ParamTable = Record<string, Record<string, number>>;
+type PowerTable = Record<string, Record<string, number>>;
 
-/** Turns POWER's {T2M: {"200101": 3.2, ..., "200113": annual}} into monthly points. */
-export function parsePower(parameter: ParamTable): Point[] {
-  const t = parameter.T2M ?? {};
-  const keys = Object.keys(t)
-    .filter((k) => k.length === 6 && Number(k.slice(4)) >= 1 && Number(k.slice(4)) <= 12)
+export function parsePower(table: PowerTable): ClimatePoint[] {
+  const temperatures = table.T2M ?? {};
+  const monthKeys = Object.keys(temperatures)
+    .filter((key) => key.length === 6 && Number(key.slice(4)) >= 1 && Number(key.slice(4)) <= 12)
     .sort();
-  const clean = (v: number | undefined) => (v === undefined || v <= -990 ? NaN : v);
-  const pts: Point[] = [];
-  for (const k of keys) {
-    const temp = clean(t[k]);
-    if (!Number.isFinite(temp)) continue;
-    const year = Number(k.slice(0, 4));
-    const m = Number(k.slice(4)) - 1;
-    pts.push({
-      x: year + (m + 0.5) / 12,
-      label: `${MONTHS[m]} ${year}`,
-      temp,
-      rain: clean(parameter.PRECTOTCORR?.[k]),
-      sun: clean(parameter.ALLSKY_SFC_SW_DWN?.[k]),
+  const usable = (value: number | undefined) => (value === undefined || value <= -990 ? NaN : value);
+  const points: ClimatePoint[] = [];
+  for (const key of monthKeys) {
+    const temperature = usable(temperatures[key]);
+    if (!Number.isFinite(temperature)) continue;
+    const year = Number(key.slice(0, 4));
+    const month = Number(key.slice(4)) - 1;
+    points.push({
+      position: year + (month + 0.5) / 12,
+      label: `${monthNames[month]} ${year}`,
+      temperature,
+      rainfall: usable(table.PRECTOTCORR?.[key]),
+      sunshine: usable(table.ALLSKY_SFC_SW_DWN?.[key]),
     });
   }
-  return pts;
+  return points;
 }
 
-async function fetchPowerLive(p: Place): Promise<ParamTable> {
-  const thisYear = new Date().getFullYear();
-  // Monthly POWER data lags; the newest complete year may not exist yet.
-  for (const end of [thisYear - 1, thisYear - 2]) {
-    const r = await fetch(powerUrl(p.lat, p.lon, POWER_START, end));
-    if (r.ok) return (await r.json()).properties.parameter;
+async function fetchPowerLive(place: Place): Promise<PowerTable> {
+  const currentYear = new Date().getFullYear();
+  for (const lastYear of [currentYear - 1, currentYear - 2]) {
+    const response = await fetchWithTimeout(powerUrl(place.latitude, place.longitude, powerFirstYear, lastYear), 20000);
+    if (response.ok) return (await response.json()).properties.parameter;
   }
   throw new Error("NASA POWER did not return data");
 }
 
-export async function loadPlace(p: Place): Promise<Dataset> {
-  let parameter: ParamTable | null = null;
-  let note = "";
+const placeKey = (place: Place) => `earth-in-sound:place:${place.latitude.toFixed(2)},${place.longitude.toFixed(2)}`;
+
+function distanceKm(from: Place, to: Place) {
+  const radians = Math.PI / 180;
+  const latitudeGap = (to.latitude - from.latitude) * radians;
+  const longitudeGap = (to.longitude - from.longitude) * radians;
+  const arc =
+    Math.sin(latitudeGap / 2) ** 2 +
+    Math.cos(from.latitude * radians) * Math.cos(to.latitude * radians) * Math.sin(longitudeGap / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(arc));
+}
+
+export function nearestExample(place: Place, examples: Place[]): Place {
+  return examples.reduce((closest, candidate) =>
+    distanceKm(place, candidate) < distanceKm(place, closest) ? candidate : closest,
+  );
+}
+
+export async function loadPlace(place: Place, examples: Place[] = []): Promise<ClimateTrack> {
+  let table: PowerTable | null = null;
+  let backupNote = "";
+  let shownPlace = place;
   try {
-    parameter = await fetchPowerLive(p);
-  } catch (e) {
-    if (p.slug) {
-      const r = await fetch(`${BASE}data/places/${p.slug}.json`);
-      if (r.ok) {
-        parameter = (await r.json()).parameter;
-        note = " (saved copy)";
+    table = await fetchPowerLive(place);
+    keepSavedCopy(placeKey(place), table);
+  } catch (liveError) {
+    table = readSavedCopy<PowerTable>(placeKey(place));
+    if (table) backupNote = " (saved on this device)";
+    if (!table && place.slug) {
+      table = (await loadBundledJson<{ parameter: PowerTable }>(`places/${place.slug}.json`))?.parameter ?? null;
+      if (table) backupNote = " (saved copy)";
+    }
+    if (!table && examples.length) {
+      const fallback = nearestExample(place, examples);
+      table = (await loadBundledJson<{ parameter: PowerTable }>(`places/${fallback.slug}.json`))?.parameter ?? null;
+      if (table) {
+        shownPlace = fallback;
+        backupNote = ` (NASA POWER was unreachable, so this is the nearest saved city, ${fallback.name})`;
       }
     }
-    if (!parameter) throw e;
+    if (!table) throw liveError;
   }
-  const points = parsePower(parameter);
+  const points = parsePower(table);
   if (points.length < 24) throw new Error("Not enough NASA POWER data for this place");
-  const name = p.country ? `${p.name}, ${p.country}` : p.name;
+  const displayName = shownPlace.country ? `${shownPlace.name}, ${shownPlace.country}` : shownPlace.name;
   return {
     kind: "place",
-    title: `${name}: ${Math.floor(points[0].x)}–${Math.floor(points[points.length - 1].x)}`,
-    source: `NASA POWER monthly T2M, PRECTOTCORR, ALLSKY_SFC_SW_DWN at ${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}${note}`,
+    title: `${displayName}: ${Math.floor(points[0].position)}–${Math.floor(points[points.length - 1].position)}`,
+    source: `NASA POWER monthly T2M, PRECTOTCORR, ALLSKY_SFC_SW_DWN at ${shownPlace.latitude.toFixed(2)}, ${shownPlace.longitude.toFixed(2)}${backupNote}`,
     points,
+    fromBackup: Boolean(backupNote),
   };
 }
 
-// ---------- Place search (Open-Meteo geocoding: free, no key, open data) ----------
-
 export async function searchPlaces(name: string): Promise<Place[]> {
-  const r = await fetch(
+  const response = await fetchWithTimeout(
     `https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&format=json&name=${encodeURIComponent(name)}`,
   );
-  if (!r.ok) throw new Error(`Search failed (${r.status})`);
-  const j = await r.json();
-  return (j.results ?? []).map((g: any) => ({
-    name: g.name,
-    country: g.country,
-    lat: g.latitude,
-    lon: g.longitude,
+  if (!response.ok) throw new Error(`Search failed (${response.status})`);
+  const body = await response.json();
+  return (body.results ?? []).map((result: { name: string; country: string; latitude: number; longitude: number }) => ({
+    name: result.name,
+    country: result.country,
+    latitude: result.latitude,
+    longitude: result.longitude,
   }));
 }
 
-// ---------- Small stats for the "what you're hearing" facts ----------
-
-/** Least-squares slope of y over x. */
-export function slope(xs: number[], ys: number[]): number {
-  const n = xs.length;
-  const mx = xs.reduce((a, b) => a + b, 0) / n;
-  const my = ys.reduce((a, b) => a + b, 0) / n;
-  let num = 0;
-  let den = 0;
-  for (let i = 0; i < n; i++) {
-    num += (xs[i] - mx) * (ys[i] - my);
-    den += (xs[i] - mx) ** 2;
+export function trendPerYear(xValues: number[], yValues: number[]): number {
+  const count = xValues.length;
+  const meanX = xValues.reduce((sum, value) => sum + value, 0) / count;
+  const meanY = yValues.reduce((sum, value) => sum + value, 0) / count;
+  let covariance = 0;
+  let spread = 0;
+  for (let i = 0; i < count; i++) {
+    covariance += (xValues[i] - meanX) * (yValues[i] - meanY);
+    spread += (xValues[i] - meanX) ** 2;
   }
-  return den ? num / den : 0;
+  return spread ? covariance / spread : 0;
 }
 
-/** Yearly means of a monthly series, keeping only complete years. */
-export function annualMeans(points: Point[]): { year: number; temp: number }[] {
-  const by = new Map<number, number[]>();
-  for (const p of points) {
-    const y = Math.floor(p.x);
-    if (!by.has(y)) by.set(y, []);
-    by.get(y)!.push(p.temp);
+export function yearlyAverages(points: ClimatePoint[]): { year: number; temperature: number }[] {
+  const monthsByYear = new Map<number, number[]>();
+  for (const point of points) {
+    const year = Math.floor(point.position);
+    if (!monthsByYear.has(year)) monthsByYear.set(year, []);
+    monthsByYear.get(year)!.push(point.temperature);
   }
-  return [...by]
-    .filter(([, v]) => v.length === 12)
-    .map(([year, v]) => ({ year, temp: v.reduce((a, b) => a + b, 0) / 12 }));
+  return [...monthsByYear]
+    .filter(([, months]) => months.length === 12)
+    .map(([year, months]) => ({ year, temperature: months.reduce((sum, value) => sum + value, 0) / 12 }));
 }
