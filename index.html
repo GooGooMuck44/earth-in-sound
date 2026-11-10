@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Hear 145 years of global warming and your own city's climate, made from NASA data." />
+    <title>Earth in Sound</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
+  </head>
+  <body>
+    <header class="wrap">
+      <h1>Earth in Sound</h1>
+      <p class="tag">Listen to NASA climate data. Warmer means higher notes and brighter sound.</p>
+    </header>
+
+    <main class="wrap">
+      <nav class="tabs" role="tablist" aria-label="Tracks">
+        <button role="tab" id="tab-global" aria-selected="true" aria-controls="panel">Planet since 1880</button>
+        <button role="tab" id="tab-place" aria-selected="false" aria-controls="panel">My Place</button>
+      </nav>
+
+      <section id="panel" role="tabpanel">
+        <div id="place-tools" class="place-tools" hidden>
+          <form id="search" class="search" autocomplete="off">
+            <label for="q" class="sr-only">Search a city</label>
+            <input id="q" type="search" placeholder="Search any city or town…" />
+            <button type="submit">Search</button>
+            <button type="button" id="geo" title="Use my location">📍 Near me</button>
+          </form>
+          <ul id="results" class="chips" aria-label="Search results"></ul>
+          <ul id="presets" class="chips" aria-label="Example places"></ul>
+        </div>
+
+        <h2 id="title">Loading…</h2>
+
+        <div class="player">
+          <button id="play" class="play" aria-label="Play" disabled>▶</button>
+          <button id="restart" class="ghost" aria-label="Restart">⏮</button>
+          <div class="readout" aria-live="polite">
+            <span id="now-label">–</span>
+            <span id="now-value"></span>
+          </div>
+          <label class="ctl">Speed
+            <select id="speed">
+              <option value="0.5">0.5×</option>
+              <option value="1" selected>1×</option>
+              <option value="2">2×</option>
+              <option value="4">4×</option>
+            </select>
+          </label>
+          <label class="ctl"><input type="checkbox" id="narrate" /> Say the years</label>
+          <label class="ctl">Volume <input type="range" id="vol" min="-40" max="0" value="-6" /></label>
+        </div>
+
+        <div id="chart" class="chart" aria-label="Chart. Click to jump to a point in time."></div>
+        <p id="status" class="status" role="status"></p>
+
+        <div class="cards">
+          <div class="card">
+            <h3>What you're hearing</h3>
+            <ul id="mapping"></ul>
+          </div>
+          <div class="card">
+            <h3>What the data says</h3>
+            <ul id="facts"></ul>
+          </div>
+        </div>
+        <p id="source" class="source"></p>
+      </section>
+    </main>
+
+    <footer class="wrap">
+      Data: NASA GISS GISTEMP v4 and NASA Langley POWER. Place search by Open-Meteo. Sound by Tone.js.
+      Built for the NASA Space Apps Challenge 2026.
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
