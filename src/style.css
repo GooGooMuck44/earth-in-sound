@@ -110,3 +110,8 @@ footer { color: var(--muted); font-size: 13px; padding-top: 24px; padding-bottom
 .tabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .tabs button { white-space: nowrap; }
 #now-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hint { margin: -4px 0 10px; color: var(--muted); font-size: 14px; }
+.tabs button, .search button, .ghost, .ctl select { min-height: 44px; }
+.chips button { min-height: 36px; }
+.ctl input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); }
+.chart:focus-visible { outline-offset: 4px; border-radius: 6px; }
