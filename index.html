@@ -36,6 +36,8 @@
         </div>
 
         <h2 id="title">Loading…</h2>
+        <p id="hint" class="hint">Press ▶ to listen</p>
+        <p id="headphones" class="hint" hidden>🎧 Use headphones</p>
 
         <div class="player">
           <button id="play" class="play" aria-label="Play" disabled>▶</button>
@@ -44,7 +46,7 @@
             <span id="now-label">–</span>
             <span id="now-value"></span>
           </div>
-          <label class="ctl">
+          <label class="ctl" aria-label="Speed">
             <select id="speed">
               <option value="0.5">0.5×</option>
               <option value="1" selected>1×</option>
@@ -63,11 +65,11 @@
           <label class="ctl"><input type="checkbox" id="loop" /> Loop</label>
           <label class="ctl"><input type="checkbox" id="narrate" /> Voice</label>
           <label class="ctl" aria-label="Volume">🔊 <input type="range" id="vol" min="-40" max="0" value="-6" /></label>
-          <button id="record" class="ghost record" disabled>⏺ Record</button>
+          <button id="record" class="ghost record" aria-label="Record" disabled>⏺ Record</button>
           <a id="download" class="download" hidden>⬇ Save</a>
         </div>
 
-        <div id="chart" class="chart" aria-label="Chart. Click to jump to a point in time."></div>
+        <div id="chart" class="chart" tabindex="0" role="group" aria-label="Chart. Use left and right arrows to move."></div>
         <p id="status" class="status" role="status"></p>
 
         <div class="cards">

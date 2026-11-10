@@ -44,6 +44,8 @@ const page = {
   narrateToggle: element<HTMLInputElement>("narrate"),
   volumeSlider: element<HTMLInputElement>("vol"),
   status: element("status"),
+  hint: element("hint"),
+  headphonesHint: element("headphones"),
   connection: element("connection"),
   soundGuide: element("mapping"),
   findings: element("facts"),
@@ -111,8 +113,12 @@ function friendlyError() {
 
 function openTab(kind: TrackKind) {
   activeTab = kind;
-  for (const [tabKind, tab] of Object.entries(page.tabs)) tab.setAttribute("aria-selected", String(tabKind === kind));
+  for (const [tabKind, tab] of Object.entries(page.tabs)) {
+    tab.setAttribute("aria-selected", String(tabKind === kind));
+    tab.setAttribute("tabindex", tabKind === kind ? "0" : "-1");
+  }
   page.placeTools.hidden = kind !== "place";
+  page.headphonesHint.hidden = kind !== "zones";
   if (kind === "place") {
     openPlace(placeFromAddress() ?? examplePlaces[0]);
     return;
@@ -288,6 +294,7 @@ async function togglePlay() {
   }
   engine.play();
   showPlaying(true);
+  page.hint.hidden = true;
 }
 
 async function recordFromStart() {
@@ -359,10 +366,22 @@ page.speedPicker.addEventListener("change", () => {
 });
 for (const [kind, tab] of Object.entries(page.tabs)) tab.addEventListener("click", () => openTab(kind as TrackKind));
 
+const tabOrder = Object.keys(page.tabs) as TrackKind[];
+for (const tab of Object.values(page.tabs)) tab.setAttribute("tabindex", tab.getAttribute("aria-selected") === "true" ? "0" : "-1");
+element("tab-global").parentElement!.addEventListener("keydown", (event) => {
+  const moves: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1 };
+  if (!(event.key in moves)) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const next = tabOrder[(tabOrder.indexOf(activeTab) + moves[event.key] + tabOrder.length) % tabOrder.length];
+  openTab(next);
+  page.tabs[next].focus();
+});
+
 document.addEventListener("keydown", (event) => {
   const typingTarget = (event.target as HTMLElement).tagName;
-  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(typingTarget)) return;
-  if (event.code === "Space") {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(typingTarget)) return;
+  if (event.code === "Space" && typingTarget !== "BUTTON" && typingTarget !== "A") {
     event.preventDefault();
     togglePlay();
   } else if (event.key === "ArrowRight") jumpTo(currentStep + (event.shiftKey ? 10 : 1));
