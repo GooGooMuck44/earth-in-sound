@@ -11,9 +11,15 @@ global and local climate records into music with [Tone.js](https://tonejs.github
 - **My Place:** NASA POWER monthly data (2001 onward) for any city on Earth.
   Temperature (`T2M`) sets the pitch, rain (`PRECTOTCORR`) sets how many notes play,
   and sunshine (`ALLSKY_SFC_SW_DWN`) sets the filter brightness. A bass note marks each January.
+- **Earth right now:** NASA EONET natural events from the last 60 days, one beat per day.
+- **Scan the Planet:** a scan line sweeps across a NASA GIBS map, either air temperature
+  (`MERRA2_2m_Air_Temperature_Assimilated_Monthly`), sea surface temperature (`GHRSST_L4_MUR_Sea_Surface_Temperature`) or plants
+  (`MODIS_Terra_L3_NDVI_Monthly`). Pixel colours become real values through the layer's GIBS colormap. "1981 vs now" compares
+  the same month 45 years apart. "Your image" scans any picture, such as an Earth Information Center frame, by colour and brightness.
+  [GIBS API](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api)
 - A playhead on the chart follows the music. Click the chart to jump, use Space to play or pause,
-  and ←/→ to step (hold Shift to move 10 steps). "Say the years" reads the years aloud.
-- **Record song** plays the track from the start and gives you a `.webm` file to download and share.
+  and ←/→ to step (hold Shift to move 10 steps). "Voice" reads the years aloud.
+- **Record** plays the track from the start and gives you a `.webm` file to download and share.
 
 ## Built not to break during a demo
 
