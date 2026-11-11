@@ -11,14 +11,18 @@ export class ClimateChart {
   private playhead = document.createElement("div");
   private track: ClimateTrack | null = null;
   private currentStep = 0;
+  private picture: HTMLDivElement | null = null;
   onJump: (stepNumber: number) => void = () => {};
 
   constructor(private container: HTMLElement) {
     this.playhead.className = "playhead";
-    new ResizeObserver(() => this.plot?.setSize(this.sizeForContainer())).observe(container);
+    new ResizeObserver(() => {
+      this.plot?.setSize(this.fitSize());
+      if (this.picture) this.movePlayhead(this.currentStep);
+    }).observe(container);
   }
 
-  private sizeForContainer() {
+  private fitSize() {
     const width = this.container.clientWidth;
     return { width, height: Math.max(220, Math.min(380, Math.round(width * 0.42))) };
   }
@@ -26,6 +30,13 @@ export class ClimateChart {
   render(track: ClimateTrack) {
     this.track = track;
     this.plot?.destroy();
+    this.plot = null;
+    this.picture?.remove();
+    this.picture = null;
+    if (track.scan) {
+      this.showPicture(track);
+      return;
+    }
     const positions = track.points.map((point) => point.position);
     const warmColor = themeColor("--temp");
     const axisStyle = {
@@ -38,7 +49,7 @@ export class ClimateChart {
       values: (_plot: uPlot, ticks: number[]) => ticks.map((tick) => String(Math.floor(tick))),
     };
     const sharedOptions = {
-      ...this.sizeForContainer(),
+      ...this.fitSize(),
       cursor: { y: false, points: { show: false } },
     };
 
@@ -120,7 +131,45 @@ export class ClimateChart {
     this.movePlayhead(0);
   }
 
+  private showPicture(track: ClimateTrack) {
+    const frame = document.createElement("div");
+    frame.className = "scan-frame";
+    for (const picture of track.scan!.pictures) {
+      const image = document.createElement("img");
+      image.src = picture.imageUrl;
+      image.alt = track.scan!.description;
+      frame.appendChild(image);
+    }
+    frame.appendChild(this.playhead);
+    frame.addEventListener("click", (event) => {
+      const box = frame.getBoundingClientRect();
+      const share = (event.clientX - box.left) / box.width;
+      const perPicture = track.points.length / track.scan!.pictures.length;
+      const shown = this.shownPicture();
+      this.onJump(Math.min(track.points.length - 1, shown * perPicture + Math.floor(share * perPicture)));
+    });
+    this.container.appendChild(frame);
+    this.picture = frame;
+    this.movePlayhead(0);
+  }
+
+  private shownPicture() {
+    if (!this.track?.scan) return 0;
+    const perPicture = this.track.points.length / this.track.scan.pictures.length;
+    return Math.floor(this.currentStep / perPicture);
+  }
+
   movePlayhead(stepNumber: number) {
+    if (this.picture && this.track?.scan) {
+      this.currentStep = stepNumber;
+      const pictures = this.track.scan.pictures.length;
+      const perPicture = this.track.points.length / pictures;
+      const shown = this.shownPicture();
+      [...this.picture.querySelectorAll("img")].forEach((image, order) => (image.hidden = order !== shown));
+      const share = ((stepNumber % perPicture) + 0.5) / perPicture;
+      this.playhead.style.transform = `translateX(${share * this.picture.clientWidth}px)`;
+      return;
+    }
     if (!this.plot || !this.track) return;
     const position = this.track.points[stepNumber]?.position;
     if (position == null) return;

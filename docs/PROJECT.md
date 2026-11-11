@@ -15,6 +15,7 @@ Earth in Sound turns NASA climate records into music in the browser. Warmer mean
 - **Planet since 1880:** one note per year of global temperature. The last ten years were about 1.3 °C warmer than 1880–1909, and you hear the tune climb.
 - **Poles vs Tropics:** the Arctic in your left ear, the Tropics in the centre and the Antarctic in your right ear. The Arctic has warmed about 3.4 °C, roughly 2.7× faster than the planet as a whole.
 - **My Place:** any city on Earth, month by month since 2001. Temperature sets the pitch, rain adds notes and sunshine makes the sound brighter.
+- **Scan the Planet:** a scan line sweeps west to east across a NASA satellite map and plays what it crosses. Each column has 8 bands from north to south, value sets the pitch, and longitude sets left or right. Choose air temperature (back to 1980), sea surface temperature or plants, and pick a month. "1981 vs now" plays August 1981 and then August 2026. The planet averages +0.89 °C warmer. "Your image" scans any picture, such as a frame from the Earth Information Center: warm colours and bright pixels play higher, and detailed or colourful areas play more notes. A short description of the picture is read by screen readers.
 - **Earth right now:** NASA's natural-event feed for the last 60 days, one beat per day. Wildfires crackle, storms and volcanoes drum, and ice and snow ring a bell, placed left to right from west to east. The saved copy holds about 1,770 events, most of them wildfires.
 
 ## NASA data used
@@ -25,6 +26,7 @@ Earth in Sound turns NASA climate records into music in the browser. Warmer mean
 | NASA GISS GISTEMP v4, zonal | Annual means for 64°N–90°N, 24°S–24°N and 90°S–64°S |
 | NASA POWER (Langley) | Monthly `T2M` (air temperature at 2 m), `PRECTOTCORR` (rain) and `ALLSKY_SFC_SW_DWN` (sunshine) |
 | NASA EONET v3 | Natural events from the last 60 days: wildfires, storms, volcanoes, floods, ice |
+| NASA GIBS (Global Imagery Browse Services) | WMS maps `MERRA2_2m_Air_Temperature_Assimilated_Monthly`, `GHRSST_L4_MUR_Sea_Surface_Temperature` and `MODIS_Terra_L3_NDVI_Monthly`, turned into values with GIBS colormaps. API: https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api |
 
 City search uses the free Open-Meteo geocoding API.
 
@@ -49,7 +51,7 @@ We used Claude (Anthropic) as a coding assistant to help write and review code, 
 1. **Title:** Earth in Sound. Hear NASA climate data.
 2. **Problem:** climate charts are easy to ignore and hard for people with low vision to use.
 3. **Solution:** turn the data into sound. Show the screenshot with the playhead.
-4. **Four tracks:** Planet, Poles vs Tropics, My Place and Earth right now, each with a one-line finding.
-5. **NASA data:** GISTEMP v4, POWER and EONET, and how each value maps to sound.
+4. **Five tracks:** Planet, Poles vs Tropics, My Place, Earth right now and Scan the Planet, each with a one-line finding.
+5. **NASA data:** GISTEMP v4, POWER, EONET and GIBS, and how each value maps to sound.
 6. **Built for real use:** works offline, keyboard and screen-reader friendly, and records a song to share.
 7. **Next steps and team:** more datasets such as sea level and CO₂, classroom use, and team credits.
