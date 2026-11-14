@@ -562,11 +562,13 @@ function openScan(): Promise<boolean> {
 async function refreshEvents() {
   const request = latestRequest;
   if (!navigator.onLine) return;
+  say("Checking live events…");
   try {
     const live = await loadLiveEvents();
     if (request !== latestRequest || scheduled || engine.recording || view !== "events") return;
     await showTrack(async () => live, "events");
   } catch {
+    if (request === latestRequest && view === "events") say("Live events unavailable. Playing saved data.");
     return;
   }
 }

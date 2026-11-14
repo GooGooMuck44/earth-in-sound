@@ -269,6 +269,18 @@ kbd { font: inherit; font-size: 13px; padding: 1px 6px; border: 1px solid var(--
   .transport { gap: var(--s2); }
 }
 @media (max-width: 400px) {
+  .top { flex-wrap: wrap; }
+  .top-right { margin-left: auto; }
+  .top .quiet span:last-child { display: none; }
+  .top .quiet { width: 44px; padding: 0; }
+  h1 { font-size: 26px; overflow-wrap: anywhere; }
+  h2 { overflow-wrap: anywhere; }
+  .stage-head { flex-wrap: wrap; }
+  .player { position: static; }
+  .player-inner { grid-template-columns: 1fr; grid-template-areas: "timeline" "transport" "controls" "extra"; gap: var(--s1); }
+  .transport, .controls { width: 100%; flex-wrap: wrap; }
+  .readout { flex: 1 0 100%; }
+  .controls { justify-content: flex-start; }
   .vol { display: none; }
   .now-label { font-size: 18px; }
 }
