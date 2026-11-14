@@ -1,13 +1,21 @@
 const cachePrefix = "earth-in-sound-";
-const cacheName = `${cachePrefix}v4`;
+const cacheName = `${cachePrefix}v5`;
 const examplePlaces = ["new-york", "london", "lagos", "delhi", "kathmandu", "dhaka", "tokyo", "sao-paulo", "sydney"];
 const startupFiles = [
   "./data/gistemp.json",
   "./data/zones.json",
   "./data/eonet.json",
+  "./data/gibs/index.json",
+  "./data/gibs/air.png",
+  "./data/gibs/air-then.png",
+  "./data/gibs/sea.png",
+  "./data/gibs/plants.png",
+  "./data/gibs/MERRA2_2m_Air_Temperature_Assimilated_Monthly.xml",
+  "./data/gibs/GHRSST_Sea_Surface_Temperature.xml",
+  "./data/gibs/MODIS_L3_NDVI.xml",
   ...examplePlaces.map((slug) => `./data/places/${slug}.json`),
 ];
-const trustedHosts = ["power.larc.nasa.gov", "geocoding-api.open-meteo.com", "eonet.gsfc.nasa.gov"];
+const trustedHosts = ["power.larc.nasa.gov", "geocoding-api.open-meteo.com", "eonet.gsfc.nasa.gov", "gibs.earthdata.nasa.gov"];
 
 function appAssets(markup) {
   const paths = [];

@@ -1,6 +1,6 @@
 import type { TrackKind } from "./data";
 
-export const trackOrder: TrackKind[] = ["global", "zones", "place", "events"];
+export const trackOrder: TrackKind[] = ["global", "zones", "place", "events", "scan"];
 
 export function tabAfterKey(current: TrackKind, key: string): TrackKind | null {
   const index = trackOrder.indexOf(current);

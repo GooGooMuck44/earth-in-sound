@@ -71,7 +71,7 @@ for (const path of assetPaths) {
   const url = new URL(path, context.self.registration.scope).href;
   assert.ok(stored.has(url), `first visit did not cache ${path}`);
 }
-for (const required of ["data/gistemp.json", "data/zones.json", "data/eonet.json", "data/places/dhaka.json"]) {
+for (const required of ["data/gistemp.json", "data/zones.json", "data/eonet.json", "data/places/dhaka.json", "data/gibs/index.json", "data/gibs/air.png", "data/gibs/air-then.png", "data/gibs/sea.png", "data/gibs/plants.png"]) {
   assert.ok(stored.has(new URL(required, context.self.registration.scope).href), `first visit did not cache ${required}`);
 }
 

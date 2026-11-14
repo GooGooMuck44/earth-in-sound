@@ -1,7 +1,7 @@
 import * as Tone from "tone";
 import type { ClimatePoint, TrackKind } from "./data";
 
-export const pentatonicScale = [
+export const pentatonic = [
   "C3", "D3", "E3", "G3", "A3",
   "C4", "D4", "E4", "G4", "A4",
   "C5", "D5", "E5", "G5", "A5",
@@ -19,7 +19,7 @@ const leadPresets: Record<LeadSound, { harmonicity: number; modulationIndex: num
   pluck: { harmonicity: 3, modulationIndex: 8, envelope: [0.002, 0.12, 0, 0.2] },
 };
 
-const instrumentForCategory: Record<string, HitInstrument> = {
+const hitFor: Record<string, HitInstrument> = {
   wildfires: "crackle",
   severeStorms: "storm",
   volcanoes: "volcano",
@@ -35,6 +35,7 @@ export interface SoundStep {
   heat: number;
   bassNote?: string;
   spokenWord?: string;
+  pan?: number;
 }
 
 const scaleBetween = (value: number, lowest: number, highest: number) =>
@@ -46,7 +47,7 @@ const valueRange = (values: number[]) => {
 };
 
 const noteFor = (level: number) =>
-  pentatonicScale[Math.max(0, Math.min(pentatonicScale.length - 1, Math.round(level * (pentatonicScale.length - 1))))];
+  pentatonic[Math.max(0, Math.min(pentatonic.length - 1, Math.round(level * (pentatonic.length - 1))))];
 
 export function longitudeToPan(longitude: number): number {
   if (!Number.isFinite(longitude)) return 0;
@@ -59,7 +60,7 @@ export function evenlySpacedHitOffsets(hitCount: number, secondsPerStep: number)
 }
 
 export function supportsLeadSound(kind: TrackKind): boolean {
-  return kind === "global" || kind === "place";
+  return kind === "global" || kind === "place" || kind === "scan";
 }
 
 export function shouldLoopPlayback(loopRequested: boolean, recording: boolean): boolean {
@@ -108,7 +109,7 @@ export function eventSteps(points: ClimatePoint[]): SoundStep[] {
     const level = point.temperature / busiest;
     const hits = (point.happenings ?? []).flatMap((group) =>
       Array.from({ length: group.count }, () => ({
-        instrument: instrumentForCategory[group.category] ?? "pluck",
+        instrument: hitFor[group.category] ?? "pluck",
         strength: Math.min(1, 0.25 + Math.log10(1 + group.count) / 2),
         pan: longitudeToPan(group.longitude),
         note: noteFor(Math.min(1, group.count / 20)),
@@ -126,6 +127,43 @@ export function eventSteps(points: ClimatePoint[]): SoundStep[] {
   });
 }
 
+export function scanSteps(points: ClimatePoint[]): SoundStep[] {
+  const [coolest, warmest] = valueRange(points.flatMap((point) => point.bands ?? []));
+  const [dimmest, brightest] = valueRange(points.map((point) => point.temperature));
+  return points.map((point, column) => {
+    const bands = (point.bands ?? []).map((value, band) => ({ value, band, detail: point.bandDetail?.[band] ?? 1 }));
+    const present = bands.filter((band) => Number.isFinite(band.value));
+    const busiest = point.bandDetail ? 1 + Math.round(average(present.map((band) => band.detail)) * (present.length - 1)) : present.length;
+    const playing = point.bandDetail ? [...present].sort((first, second) => second.detail - first.detail).slice(0, busiest) : present;
+    const notes = playing
+      .sort((first, second) => first.band - second.band)
+      .map(({ value, band }) => {
+        const northLift = ((bands.length - 1 - band) / Math.max(1, bands.length - 1)) * 0.25;
+        return noteFor(Math.min(1, scaleBetween(value, coolest, warmest) * 0.75 + northLift));
+      });
+    const level = Number.isFinite(point.temperature) ? scaleBetween(point.temperature, dimmest, brightest) : 0;
+    const longitude = point.longitude ?? 0;
+    const landmark = column % 10 === 0;
+    return {
+      notes,
+      brightness: 300 + level * 4500,
+      heat: level * 0.4,
+      pan: Math.max(-1, Math.min(1, longitude / 180)),
+      bassNote: landmark ? "C2" : undefined,
+      spokenWord: landmark ? spokenLon(longitude - 3) : undefined,
+    };
+  });
+}
+
+const average = (values: number[]) => (values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0);
+
+function spokenLon(longitude: number) {
+  const rounded = Math.round(longitude);
+  if (rounded === 0) return "0 degrees";
+  if (Math.abs(rounded) === 180) return "180 degrees";
+  return `${Math.abs(rounded)} ${rounded < 0 ? "west" : "east"}`;
+}
+
 export function placeSteps(points: ClimatePoint[]): SoundStep[] {
   const [coldest, warmest] = valueRange(points.map((point) => point.temperature));
   const [driest, wettest] = valueRange(points.map((point) => point.rainfall ?? NaN));
@@ -134,9 +172,9 @@ export function placeSteps(points: ClimatePoint[]): SoundStep[] {
     const warmth = scaleBetween(point.temperature, coldest, warmest);
     const wetness = Number.isFinite(point.rainfall) ? scaleBetween(point.rainfall!, driest, wettest) : 0;
     const sunniness = Number.isFinite(point.sunshine) ? scaleBetween(point.sunshine!, dullest, sunniest) : 0.5;
-    const rootPosition = Math.round(warmth * (pentatonicScale.length - 1));
+    const rootPosition = Math.round(warmth * (pentatonic.length - 1));
     const raindrops = 1 + Math.round(wetness * 3);
-    const notes = Array.from({ length: raindrops }, (_, drop) => pentatonicScale[Math.max(0, rootPosition - drop * 2)]);
+    const notes = Array.from({ length: raindrops }, (_, drop) => pentatonic[Math.max(0, rootPosition - drop * 2)]);
     const isJanuary = point.label.startsWith("Jan");
     return {
       notes,
@@ -155,8 +193,10 @@ export class SoundEngine {
   private bassSynth!: Tone.MonoSynth;
   private hitPlayers!: Record<HitInstrument, { panner: Tone.Panner; play: (note: string, strength: number, time: number) => void }>;
   private toneFilter!: Tone.Filter;
+  private leadPanner!: Tone.Panner;
   private hazeLevel!: Tone.Gain;
   private masterVolume!: Tone.Volume;
+  wave: Tone.Waveform | null = null;
   private recorder: Tone.Recorder | null = null;
   private steps: SoundStep[] = [];
   private secondsPerStep = 0.5;
@@ -187,6 +227,8 @@ export class SoundEngine {
     await Tone.start();
     if (this.ready) return;
     this.masterVolume = new Tone.Volume(-6).toDestination();
+    this.wave = new Tone.Waveform(256);
+    this.masterVolume.connect(this.wave);
     const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.3 }).connect(this.masterVolume);
     this.toneFilter = new Tone.Filter(1200, "lowpass", -24).connect(reverb);
     this.leadSynth = new Tone.PolySynth(Tone.FMSynth, {
@@ -195,7 +237,9 @@ export class SoundEngine {
       envelope: { attack: 0.01, decay: 0.3, sustain: 0.2, release: 0.8 },
       modulationEnvelope: { attack: 0.02, decay: 0.2, sustain: 0.1, release: 0.5 },
       volume: -10,
-    }).connect(this.toneFilter);
+    });
+    this.leadPanner = new Tone.Panner(0).connect(this.toneFilter);
+    this.leadSynth.connect(this.leadPanner);
     this.leadSynth.maxPolyphony = 24;
     const zoneSynth = (pan: number, options: ConstructorParameters<typeof Tone.Synth>[0]) => {
       const synth = new Tone.PolySynth(Tone.Synth, options as object);
@@ -299,6 +343,7 @@ export class SoundEngine {
     const painter = Tone.getDraw();
     steps.forEach((step, stepNumber) => {
       transport.schedule((time) => {
+        this.leadPanner.pan.setValueAtTime(step.pan ?? 0, time);
         const gap = secondsPerStep / Math.max(1, step.notes.length);
         step.notes.forEach((note, order) =>
           this.leadSynth.triggerAttackRelease(note, Math.max(0.08, gap * 0.9), time + order * gap),
