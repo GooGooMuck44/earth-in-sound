@@ -1,11 +1,27 @@
 import type { ScanDetails } from "./scan";
 
-export type TrackKind = "global" | "zones" | "place" | "events" | "scan";
+export type TrackKind = "global" | "zones" | "place" | "compare" | "events" | "scan";
+
+export type DataStatus = "live" | "saved" | "browser";
+
+export interface TrackMeta {
+  dataset: string;
+  link: string;
+  units: string;
+  coverage: string;
+  retrieved?: string;
+  baseline?: string;
+  status: DataStatus;
+  limit: string;
+  request?: string;
+}
 
 export interface ClimatePoint {
   position: number;
   label: string;
+  key?: string;
   temperature: number;
+  other?: number;
   rainfall?: number;
   sunshine?: number;
   arctic?: number;
@@ -33,6 +49,9 @@ export interface ClimateTrack {
   notice?: string;
   eventTotals?: Record<string, number>;
   scan?: ScanDetails;
+  meta: TrackMeta;
+  place?: Place;
+  places?: [Place, Place];
 }
 
 export interface Place {
@@ -84,6 +103,10 @@ function keepSavedCopy(key: string, value: unknown) {
   }
 }
 
+export const placeName = (place: Place) => (place.country ? `${place.name}, ${place.country}` : place.name);
+const day = (stamp?: string) => (stamp && Number.isFinite(Date.parse(stamp)) ? stamp.slice(0, 10) : undefined);
+const today = () => new Date().toISOString().slice(0, 10);
+
 async function loadSaved<T>(path: string): Promise<T | null> {
   try {
     const response = await fetchTimed(`${siteRoot}data/${path}`);
@@ -94,8 +117,9 @@ async function loadSaved<T>(path: string): Promise<T | null> {
 }
 
 export async function loadGlobal(): Promise<ClimateTrack> {
-  type GistempFile = { years: { year: number; anomaly: number }[] };
-  let years = (await loadSaved<GistempFile>("gistemp.json"))?.years ?? null;
+  type GistempFile = { years: { year: number; anomaly: number }[]; fetched?: string; source?: string };
+  const file = await loadSaved<GistempFile>("gistemp.json");
+  let years = file?.years ?? null;
   let fromBackup = false;
   if (years?.length) {
     keepSavedCopy("earth-in-sound:gistemp", years);
@@ -106,10 +130,21 @@ export async function loadGlobal(): Promise<ClimateTrack> {
   if (!years?.length) throw new Error("GISTEMP data is missing");
   return {
     kind: "global",
-    title: `Global temperature ${years[0].year}–${years[years.length - 1].year}`,
+    title: "Global temperature",
     source: "NASA GISTEMP v4 · vs 1951–1980",
-    points: years.map((entry) => ({ position: entry.year, label: String(entry.year), temperature: entry.anomaly })),
+    points: years.map((entry) => ({ position: entry.year, label: String(entry.year), key: String(entry.year), temperature: entry.anomaly })),
     fromBackup,
+    meta: {
+      dataset: "NASA GISS Surface Temperature Analysis (GISTEMP v4), global annual mean",
+      link: "https://data.giss.nasa.gov/gistemp/",
+      request: file?.source,
+      units: "°C anomaly",
+      baseline: "1951–1980 average",
+      coverage: `${years[0].year}–${years[years.length - 1].year}, yearly`,
+      retrieved: fromBackup ? undefined : day(file?.fetched),
+      status: fromBackup ? "browser" : "saved",
+      limit: "Anomalies show change from a baseline, not actual temperatures. Early years have wider uncertainty.",
+    },
   };
 }
 
@@ -122,7 +157,8 @@ interface ZoneYear {
 }
 
 export async function loadZones(): Promise<ClimateTrack> {
-  let years = (await loadSaved<{ years: ZoneYear[] }>("zones.json"))?.years ?? null;
+  const file = await loadSaved<{ years: ZoneYear[]; fetched?: string; source?: string }>("zones.json");
+  let years = file?.years ?? null;
   let fromBackup = false;
   if (years?.length) {
     keepSavedCopy("earth-in-sound:zones", years);
@@ -133,11 +169,23 @@ export async function loadZones(): Promise<ClimateTrack> {
   if (!years?.length) throw new Error("Zonal GISTEMP data is missing");
   return {
     kind: "zones",
-    title: `Poles vs Tropics ${years[0].year}–${years[years.length - 1].year}`,
+    title: "Poles and Tropics",
     source: "NASA GISTEMP v4 zonal · vs 1951–1980",
+    meta: {
+      dataset: "NASA GISTEMP v4 zonal annual means: 64°N–90°N, 24°S–24°N, 90°S–64°S",
+      link: "https://data.giss.nasa.gov/gistemp/",
+      request: file?.source,
+      units: "°C anomaly",
+      baseline: "1951–1980 average",
+      coverage: `${years[0].year}–${years[years.length - 1].year}, yearly`,
+      retrieved: fromBackup ? undefined : day(file?.fetched),
+      status: fromBackup ? "browser" : "saved",
+      limit: "Polar records have few stations, especially before 1950, so early polar values are less certain.",
+    },
     points: years.map((entry) => ({
       position: entry.year,
       label: String(entry.year),
+      key: String(entry.year),
       temperature: entry.global,
       arctic: entry.arctic,
       tropics: entry.tropics,
@@ -191,6 +239,7 @@ export function eventDays(events: EonetEvent[], today = new Date()): ClimatePoin
     return {
       position: order,
       label: `${date.getUTCDate()} ${monthNames[date.getUTCMonth()]}`,
+      key,
       temperature: happenings.reduce((sum, group) => sum + group.count, 0),
       happenings,
       headlines: [...day.headlines],
@@ -198,7 +247,9 @@ export function eventDays(events: EonetEvent[], today = new Date()): ClimatePoin
   });
 }
 
-function eventTrack(events: EonetEvent[], live: boolean): ClimateTrack {
+function eventTrack(events: EonetEvent[], live: boolean, fetched?: string): ClimateTrack {
+  const newestStamp = events.flatMap((event) => event.geometry.map((geometry) => geometry.date)).sort().at(-1);
+  const points = eventDays(events, !live && newestStamp ? new Date(newestStamp) : new Date());
   const newest = events.flatMap((event) => event.geometry.map((geometry) => geometry.date)).sort().at(-1);
   const eventTotals: Record<string, number> = {};
   for (const event of events) {
@@ -208,10 +259,20 @@ function eventTrack(events: EonetEvent[], live: boolean): ClimateTrack {
   return {
     kind: "events",
     eventTotals,
-    title: "Earth right now · last 60 days",
+    title: "Natural events",
     source: live ? "NASA EONET · live" : `NASA EONET · saved ${newest?.slice(0, 10) ?? ""}`,
-    points: eventDays(events, !live && newest ? new Date(newest) : new Date()),
-    notice: live ? "Live EONET data loaded." : "Using saved EONET data while checking for a live update.",
+    points,
+    notice: live ? "Live events" : "",
+    meta: {
+      dataset: "NASA Earth Observatory Natural Event Tracker (EONET v3)",
+      link: "https://eonet.gsfc.nasa.gov/",
+      request: eonetUrl,
+      units: "tracked events per day",
+      coverage: `${points[0]?.key ?? ""} to ${points.at(-1)?.key ?? ""}, daily`,
+      retrieved: live ? today() : day(fetched),
+      status: live ? "live" : "saved",
+      limit: "EONET lists events NASA is tracking. It is not a complete count of disasters and says nothing about causes.",
+    },
   };
 }
 
@@ -224,8 +285,8 @@ export async function loadLiveEvents(): Promise<ClimateTrack> {
 }
 
 export async function loadEvents(): Promise<ClimateTrack> {
-  const saved = (await loadSaved<{ events: EonetEvent[] }>("eonet.json"))?.events;
-  if (saved?.length) return eventTrack(saved, false);
+  const file = await loadSaved<{ events: EonetEvent[]; fetched?: string }>("eonet.json");
+  if (file?.events?.length) return eventTrack(file.events, false, file.fetched);
   return loadLiveEvents();
 }
 
@@ -259,6 +320,7 @@ export function parsePower(table: PowerTable): ClimatePoint[] {
     points.push({
       position: year + (month + 0.5) / 12,
       label: `${monthNames[month]} ${year}`,
+      key: `${year}-${String(month + 1).padStart(2, "0")}`,
       temperature,
       rainfall: usable(table.PRECTOTCORR?.[key]),
       sunshine: usable(table.ALLSKY_SFC_SW_DWN?.[key]),
@@ -267,11 +329,25 @@ export function parsePower(table: PowerTable): ClimatePoint[] {
   return points;
 }
 
-async function fetchPowerLive(place: Place): Promise<PowerTable> {
+export const powerUnits: Record<string, string> = { T2M: "C", PRECTOTCORR: "mm/day", ALLSKY_SFC_SW_DWN: "MJ/m^2/day" };
+
+export function checkPowerUnits(parameters: Record<string, { units?: string }> | undefined) {
+  for (const [name, units] of Object.entries(powerUnits)) {
+    if (parameters?.[name]?.units !== units) throw new Error(`Unexpected POWER units for ${name}`);
+  }
+}
+
+type PowerSave = { table: PowerTable; request: string; fetched: string };
+
+async function fetchPowerLive(place: Place): Promise<PowerSave> {
   const currentYear = new Date().getFullYear();
   for (const lastYear of [currentYear - 1, currentYear - 2]) {
-    const response = await fetchTimed(powerUrl(place.latitude, place.longitude, powerFirstYear, lastYear), 20000);
-    if (response.ok) return (await response.json()).properties.parameter;
+    const request = powerUrl(place.latitude, place.longitude, powerFirstYear, lastYear);
+    const response = await fetchTimed(request, 15000);
+    if (!response.ok) continue;
+    const body = await response.json();
+    checkPowerUnits(body.parameters);
+    return { table: body.properties.parameter, request, fetched: new Date().toISOString() };
   }
   throw new Error("NASA POWER did not return data");
 }
@@ -294,48 +370,74 @@ export function nearestExample(place: Place, examples: Place[]): Place {
   );
 }
 
+type BundledPlace = { parameter: PowerTable; parameters?: Record<string, { units?: string }>; source?: string; fetched?: string };
+
+async function bundled(slug: string): Promise<PowerSave | null> {
+  const file = await loadSaved<BundledPlace>(`places/${slug}.json`);
+  if (!file?.parameter) return null;
+  try {
+    checkPowerUnits(file.parameters);
+  } catch {
+    return null;
+  }
+  return { table: file.parameter, request: file.source ?? "", fetched: file.fetched ?? "" };
+}
+
 export async function loadPlace(place: Place, examples: Place[] = []): Promise<ClimateTrack> {
-  let table: PowerTable | null = null;
-  let backupNote = "";
+  let saved: PowerSave | null = null;
+  let status: DataStatus = "saved";
   let notice = "";
   let shownPlace = place;
-  try {
-    table = await fetchPowerLive(place);
-    keepSavedCopy(placeKey(place), table);
-  } catch (liveError) {
-    table = readSavedCopy<PowerTable>(placeKey(place));
-    if (table) {
-      backupNote = " · saved browser copy";
-      notice = `Live NASA POWER data unavailable. Using saved data for ${place.name}.`;
-    }
-    if (!table && place.slug) {
-      table = (await loadSaved<{ parameter: PowerTable }>(`places/${place.slug}.json`))?.parameter ?? null;
-      if (table) {
-        backupNote = " · bundled saved data";
-        notice = `Live NASA POWER data unavailable. Using bundled data for ${place.name}.`;
-      }
-    }
-    if (!table && examples.length) {
-      const fallback = nearestExample(place, examples);
-      table = (await loadSaved<{ parameter: PowerTable }>(`places/${fallback.slug}.json`))?.parameter ?? null;
-      if (table) {
-        shownPlace = fallback;
-        backupNote = ` · offline, nearest saved city`;
-        notice = `Live data unavailable. Playing the nearest saved city: ${fallback.name}.`;
-      }
-    }
-    if (!table) throw liveError;
+  const preset = place.slug ? examples.find((example) => example.slug === place.slug) : undefined;
+  if (preset) {
+    saved = await bundled(preset.slug!);
+    shownPlace = preset;
   }
-  const points = parsePower(table);
+  if (!saved) {
+    try {
+      saved = await fetchPowerLive(place);
+      status = "live";
+      keepSavedCopy(placeKey(place), saved);
+    } catch (liveError) {
+      const copy = readSavedCopy<PowerSave | PowerTable>(placeKey(place));
+      if (copy) {
+        saved = "table" in copy ? (copy as PowerSave) : { table: copy as PowerTable, request: "", fetched: "" };
+        status = "browser";
+        notice = `Offline. Using ${place.name} from this browser.`;
+      }
+      if (!saved && examples.length) {
+        const fallback = nearestExample(place, examples);
+        saved = await bundled(fallback.slug!);
+        if (saved) {
+          shownPlace = fallback;
+          notice = `${place.name} unavailable. Playing ${fallback.name}.`;
+        }
+      }
+      if (!saved) throw liveError;
+    }
+  }
+  const points = parsePower(saved.table);
   if (points.length < 24) throw new Error("Not enough NASA POWER data for this place");
-  const displayName = shownPlace.country ? `${shownPlace.name}, ${shownPlace.country}` : shownPlace.name;
+  const first = points[0].key!;
+  const last = points[points.length - 1].key!;
   return {
     kind: "place",
-    title: `${displayName} ${Math.floor(points[0].position)}–${Math.floor(points[points.length - 1].position)}`,
-    source: `NASA POWER · ${shownPlace.latitude.toFixed(2)}, ${shownPlace.longitude.toFixed(2)}${backupNote}`,
+    title: shownPlace.name,
+    source: `NASA POWER · ${shownPlace.latitude.toFixed(2)}, ${shownPlace.longitude.toFixed(2)}`,
     points,
-    fromBackup: Boolean(backupNote),
+    fromBackup: status !== "live",
     notice,
+    place: shownPlace,
+    meta: {
+      dataset: "NASA POWER monthly point data (AG community): T2M, PRECTOTCORR, ALLSKY_SFC_SW_DWN",
+      link: "https://power.larc.nasa.gov/",
+      request: saved.request || powerUrl(shownPlace.latitude, shownPlace.longitude, powerFirstYear, Number(last.slice(0, 4))),
+      units: "°C · mm/day · MJ/m²/day",
+      coverage: `${first} to ${last}, monthly, near ${shownPlace.latitude.toFixed(2)}, ${shownPlace.longitude.toFixed(2)}`,
+      retrieved: day(saved.fetched),
+      status,
+      limit: "Rain is the month's average daily rate (mm/day), not a monthly total. Values are satellite and model estimates for a grid cell (about half a degree for weather, one degree for sunlight), not readings from one weather station.",
+    },
   };
 }
 

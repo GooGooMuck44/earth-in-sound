@@ -76,6 +76,7 @@ export interface ScanDetails {
   coolest: ScanSpot;
   description: string;
   difference?: number;
+  legend?: { stops: string; low: string; high: string };
 }
 
 type ColorEntry = { red: number; green: number; blue: number; value: number | null };
@@ -321,7 +322,7 @@ function columnsOf(picture: ScanPicture, offset: number, dateLabel: string): Cli
   });
 }
 
-type SavedIndex = { layers: Partial<Record<string, { date: string; image: string }>>; then?: { date: string; image: string } };
+type SavedIndex = { layers: Partial<Record<string, { date: string; image: string }>>; then?: { date: string; image: string }; fetched?: string };
 
 async function savedIndex(): Promise<SavedIndex | null> {
   try {
@@ -368,6 +369,15 @@ async function pictureFor(key: Exclude<ScanLayer, "image">, month: string, saved
   }
 }
 
+function legendFor(entries: ColorEntry[], layer: LayerInfo) {
+  const usable = entries.filter((entry) => entry.value !== null);
+  if (usable.length < 2) return undefined;
+  const pick = Array.from({ length: 24 }, (_, order) => usable[Math.round((order / 23) * (usable.length - 1))]);
+  const stops = pick.map((entry, order) => `rgb(${entry.red},${entry.green},${entry.blue}) ${((order / 23) * 100).toFixed(1)}%`).join(", ");
+  const shown = (value: number) => `${layer.convert(value).toFixed(layer.digits === 2 ? 1 : 0)} ${layer.units}`;
+  return { stops, low: shown(usable[0].value!), high: shown(usable.at(-1)!.value!) };
+}
+
 function withTimeout<T>(work: Promise<T>, timeoutMs: number) {
   return Promise.race([work, new Promise<T>((_, reject) => setTimeout(() => reject(new Error("GIBS too slow")), timeoutMs))]);
 }
@@ -393,14 +403,18 @@ export async function loadScan(key: Exclude<ScanLayer, "image">, month: string, 
   const grids = pictures.map((picture) => picture.grid.map((value) => layer.convert(value)));
   pictures.forEach((picture, order) => (picture.grid = grids[order]));
   const { warmest, coolest } = spotsOf(grids.at(-1)!);
+  const legend = legendFor(await colormapFor(layer), layer);
   const scan: ScanDetails = {
+    legend,
     layer: key,
     units: layer.units,
     digits: layer.digits,
     pictures,
     warmest,
     coolest,
-    description: `NASA GIBS ${layer.name.toLowerCase()} map, ${monthLabel(now.picture.date)}.`,
+    description: pictures.length > 1
+      ? `NASA GIBS ${layer.name.toLowerCase()} maps: ${monthLabel(pictures[0].date)}, then ${monthLabel(pictures[1].date)}.`
+      : `NASA GIBS ${layer.name.toLowerCase()} map, ${monthLabel(now.picture.date)}.`,
     difference: pictures.length > 1 ? areaAverage(grids[1]) - areaAverage(grids[0]) : undefined,
   };
   const points = pictures.flatMap((picture, order) =>
@@ -410,6 +424,16 @@ export async function loadScan(key: Exclude<ScanLayer, "image">, month: string, 
     kind: "scan",
     title: pictures.length > 1 ? `${layer.name} ${monthLabel(pictures[0].date)} vs ${monthLabel(pictures[1].date)}` : `${layer.name} ${monthLabel(now.picture.date)}`,
     source: `NASA GIBS · ${layer.gibsLayer}${fromBackup ? " · saved copy" : ""}`,
+    meta: {
+      dataset: `NASA GIBS ${layer.gibsLayer} map, read through the ${layer.colormap} colormap`,
+      link: "https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api",
+      request: pictures.map((picture) => picture.imageUrl.startsWith("http") ? picture.imageUrl : "").filter(Boolean).join(" ") || undefined,
+      units: layer.units,
+      coverage: `${pictures.map((picture) => monthLabel(picture.date)).join(" and ")}, whole globe, 60 columns by 8 bands`,
+      retrieved: fromBackup ? index?.fetched?.slice(0, 10) : new Date().toISOString().slice(0, 10),
+      status: fromBackup ? "saved" : "live",
+      limit: "Values are read back from map colours, so each one is the middle of a colour step, not the original measurement.",
+    },
     points,
     fromBackup,
     scan,
@@ -426,6 +450,14 @@ export async function loadImageScan(file: File): Promise<ClimateTrack> {
     kind: "scan",
     title: file.name.replace(/\.[^.]+$/, ""),
     source: "Your image · colour and brightness",
+    meta: {
+      dataset: "Your image (not NASA data)",
+      link: "",
+      units: "colour and brightness index, 0–100",
+      coverage: "One picture, scanned left to right",
+      status: "saved",
+      limit: "This plays colour and brightness. It is not a measurement of anything on Earth, even if the picture shows Earth.",
+    },
     points: columnsOf(picture, 0, ""),
     scan: {
       layer: "image",

@@ -1,7 +1,8 @@
 const cachePrefix = "earth-in-sound-";
-const cacheName = `${cachePrefix}v6`;
+const cacheName = `${cachePrefix}v8`;
 const examplePlaces = ["new-york", "london", "lagos", "delhi", "kathmandu", "dhaka", "tokyo", "sao-paulo", "sydney"];
 const startupFiles = [
+  "./mark.svg",
   "./data/gistemp.json",
   "./data/zones.json",
   "./data/eonet.json",
@@ -26,6 +27,16 @@ function appAssets(markup) {
   return paths;
 }
 
+function styleAssets(css, base) {
+  const found = [];
+  for (const match of css.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
+    if (match[1].startsWith("data:")) continue;
+    const url = new URL(match[1], base);
+    if (url.origin === base.origin && !found.some((item) => item.href === url.href)) found.push(url);
+  }
+  return found;
+}
+
 async function cacheFirstVisit() {
   const cache = await caches.open(cacheName);
   const indexUrl = new URL("./index.html", self.registration.scope);
@@ -35,8 +46,15 @@ async function cacheFirstVisit() {
   const markup = await response.clone().text();
   await cache.put(indexUrl, response.clone());
   await cache.put(homeUrl, response);
-  const required = [...startupFiles, ...appAssets(markup)].map((path) => new URL(path, self.registration.scope));
+  const assets = appAssets(markup).map((path) => new URL(path, self.registration.scope));
+  const required = [...startupFiles.map((path) => new URL(path, self.registration.scope)), ...assets];
   await cache.addAll(required);
+  for (const sheet of assets.filter((url) => url.pathname.endsWith(".css"))) {
+    const saved = await cache.match(sheet);
+    if (!saved) continue;
+    const linked = styleAssets(await saved.text(), sheet);
+    if (linked.length) await cache.addAll(linked);
+  }
 }
 
 self.addEventListener("install", (event) => {
@@ -66,7 +84,7 @@ async function freshOrSaved(request, timeoutMs) {
     if (response.ok) cache.put(request, response.clone());
     return response;
   } catch (problem) {
-    const saved = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
+    const saved = await cache.match(request, { ignoreSearch: request.mode === "navigate", ignoreVary: true });
     if (saved) return saved;
     if (request.mode === "navigate") {
       const homePage = await cache.match(new URL("./index.html", self.registration.scope));
@@ -78,7 +96,7 @@ async function freshOrSaved(request, timeoutMs) {
 
 async function savedOrFresh(request) {
   const cache = await caches.open(cacheName);
-  const saved = await cache.match(request);
+  const saved = await cache.match(request, { ignoreVary: true });
   if (saved) return saved;
   const response = await fetch(request);
   if (response.ok) cache.put(request, response.clone());

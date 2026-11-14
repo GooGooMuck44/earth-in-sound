@@ -9,6 +9,8 @@ export const pentatonic = [
 ];
 
 export type ZoneVoice = "arctic" | "tropics" | "antarctic";
+export type PairSide = "left" | "right";
+export const maxHits = 16;
 export type HitInstrument = "crackle" | "storm" | "volcano" | "ice" | "pluck";
 export type LeadSound = "glass" | "piano" | "pad" | "pluck";
 
@@ -30,6 +32,7 @@ const hitFor: Record<string, HitInstrument> = {
 export interface SoundStep {
   notes: string[];
   zoneNotes?: { voice: ZoneVoice; note: string }[];
+  pairNotes?: { side: PairSide; note: string }[];
   hits?: { instrument: HitInstrument; strength: number; pan: number; note: string }[];
   brightness: number;
   heat: number;
@@ -61,6 +64,11 @@ export function evenlySpacedHitOffsets(hitCount: number, secondsPerStep: number)
 
 export function supportsLeadSound(kind: TrackKind): boolean {
   return kind === "global" || kind === "place" || kind === "scan";
+}
+
+export function stepsFor(kind: TrackKind, points: ClimatePoint[]): SoundStep[] {
+  const makers = { global: globalSteps, zones: zoneSteps, place: placeSteps, compare: compareSteps, events: eventSteps, scan: scanSteps };
+  return makers[kind](points);
 }
 
 export function shouldLoopPlayback(loopRequested: boolean, recording: boolean): boolean {
@@ -103,14 +111,46 @@ export function zoneSteps(points: ClimatePoint[]): SoundStep[] {
   });
 }
 
+export function hitShares(counts: number[], limit = maxHits): number[] {
+  const total = counts.reduce((sum, count) => sum + count, 0);
+  if (total <= limit) return [...counts];
+  const shares = counts.map((count) => (count > 0 ? Math.max(1, Math.floor((count * limit) / total)) : 0));
+  while (shares.reduce((sum, share) => sum + share, 0) > limit) {
+    const biggest = shares.indexOf(Math.max(...shares));
+    if (shares[biggest] <= 1) break;
+    shares[biggest]--;
+  }
+  return shares;
+}
+
+export function compareSteps(points: ClimatePoint[]): SoundStep[] {
+  const [coldest, warmest] = valueRange(points.flatMap((point) => [point.temperature, point.other ?? NaN]));
+  return points.map((point) => {
+    const pairNotes: { side: PairSide; note: string }[] = [];
+    if (Number.isFinite(point.temperature)) pairNotes.push({ side: "left", note: noteFor(scaleBetween(point.temperature, coldest, warmest)) });
+    if (Number.isFinite(point.other)) pairNotes.push({ side: "right", note: noteFor(scaleBetween(point.other!, coldest, warmest)) });
+    const isJanuary = point.key?.endsWith("-01") ?? false;
+    return {
+      notes: [],
+      pairNotes,
+      brightness: 2200,
+      heat: 0,
+      bassNote: isJanuary ? "C2" : undefined,
+      spokenWord: isJanuary ? point.key!.slice(0, 4) : undefined,
+    };
+  });
+}
+
 export function eventSteps(points: ClimatePoint[]): SoundStep[] {
   const busiest = Math.max(1, ...points.map((point) => point.temperature));
   return points.map((point) => {
     const level = point.temperature / busiest;
-    const hits = (point.happenings ?? []).flatMap((group) =>
-      Array.from({ length: group.count }, () => ({
+    const groups = point.happenings ?? [];
+    const shares = hitShares(groups.map((group) => group.count));
+    const hits = groups.flatMap((group, order) =>
+      Array.from({ length: shares[order] }, () => ({
         instrument: hitFor[group.category] ?? "pluck",
-        strength: Math.min(1, 0.25 + Math.log10(1 + group.count) / 2),
+        strength: Math.min(0.9, 0.25 + Math.log10(1 + group.count) / 2.5),
         pan: longitudeToPan(group.longitude),
         note: noteFor(Math.min(1, group.count / 20)),
       })),
@@ -190,6 +230,8 @@ export class SoundEngine {
   private ready = false;
   private leadSynth!: Tone.PolySynth<Tone.FMSynth>;
   private zoneSynths!: Record<ZoneVoice, Tone.PolySynth>;
+  private pairSynths!: Record<PairSide, Tone.PolySynth>;
+  private noise: Tone.Noise | null = null;
   private bassSynth!: Tone.MonoSynth;
   private hitPlayers!: Record<HitInstrument, { panner: Tone.Panner; play: (note: string, strength: number, time: number) => void }>;
   private toneFilter!: Tone.Filter;
@@ -197,6 +239,7 @@ export class SoundEngine {
   private hazeLevel!: Tone.Gain;
   private masterVolume!: Tone.Volume;
   wave: Tone.Waveform | null = null;
+  private output!: Tone.ToneAudioNode;
   private recorder: Tone.Recorder | null = null;
   private steps: SoundStep[] = [];
   private secondsPerStep = 0.5;
@@ -226,10 +269,13 @@ export class SoundEngine {
   async init() {
     await Tone.start();
     if (this.ready) return;
-    this.masterVolume = new Tone.Volume(-6).toDestination();
+    const limiter = new Tone.Limiter(-1).toDestination();
+    const glue = new Tone.Compressor({ threshold: -18, ratio: 3, attack: 0.01, release: 0.2 }).connect(limiter);
+    this.masterVolume = new Tone.Volume(-10).connect(glue);
     this.wave = new Tone.Waveform(256);
-    this.masterVolume.connect(this.wave);
-    const reverb = new Tone.Reverb({ decay: 3.5, wet: 0.3 }).connect(this.masterVolume);
+    limiter.connect(this.wave);
+    this.output = limiter;
+    const reverb = new Tone.Reverb({ decay: 2.4, wet: 0.18 }).connect(this.masterVolume);
     this.toneFilter = new Tone.Filter(1200, "lowpass", -24).connect(reverb);
     this.leadSynth = new Tone.PolySynth(Tone.FMSynth, {
       harmonicity: 2,
@@ -264,10 +310,22 @@ export class SoundEngine {
         volume: -22,
       }),
     };
+    this.pairSynths = {
+      left: zoneSynth(-0.85, {
+        oscillator: { type: "triangle" },
+        envelope: { attack: 0.02, decay: 0.3, sustain: 0.25, release: 0.6 },
+        volume: -12,
+      }),
+      right: zoneSynth(0.85, {
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.03, decay: 0.3, sustain: 0.35, release: 0.7 },
+        volume: -10,
+      }),
+    };
     this.bassSynth = new Tone.MonoSynth({
       oscillator: { type: "sine" },
       envelope: { attack: 0.05, decay: 0.6, sustain: 0.3, release: 1.5 },
-      volume: -8,
+      volume: -14,
     }).connect(reverb);
     const pannedInto = (destination: Tone.InputNode) => new Tone.Panner(0).connect(destination);
     const crackleSynth = new Tone.NoiseSynth({
@@ -315,7 +373,7 @@ export class SoundEngine {
     };
     this.hazeLevel = new Tone.Gain(0).connect(this.masterVolume);
     const hazeBand = new Tone.Filter(900, "bandpass").connect(this.hazeLevel);
-    new Tone.Noise("pink").connect(hazeBand).start();
+    this.noise = new Tone.Noise({ type: "pink", volume: -4 }).connect(hazeBand);
     this.ready = true;
   }
 
@@ -351,6 +409,9 @@ export class SoundEngine {
         step.zoneNotes?.forEach(({ voice, note }) =>
           this.zoneSynths[voice].triggerAttackRelease(note, Math.max(0.08, secondsPerStep * 0.85), time),
         );
+        step.pairNotes?.forEach(({ side, note }, order) =>
+          this.pairSynths[side].triggerAttackRelease(note, Math.max(0.08, secondsPerStep * 0.8), time + order * Math.min(0.03, secondsPerStep * 0.1)),
+        );
         const hitOffsets = evenlySpacedHitOffsets(step.hits?.length ?? 0, secondsPerStep);
         step.hits?.forEach((hit, order) => {
           const player = this.hitPlayers[hit.instrument];
@@ -377,7 +438,9 @@ export class SoundEngine {
   }
 
   play() {
-    if (this.steps.length) this.transport.start();
+    if (!this.steps.length) return;
+    if (this.noise && this.noise.state !== "started") this.noise.start();
+    this.transport.start();
   }
 
   pause() {
@@ -399,7 +462,7 @@ export class SoundEngine {
   startRecording() {
     if (!this.ready || !this.canRecord) return false;
     this.recorder = new Tone.Recorder();
-    this.masterVolume.connect(this.recorder);
+    this.output.connect(this.recorder);
     this.recorder.start();
     return true;
   }
@@ -409,7 +472,7 @@ export class SoundEngine {
     if (!recorder) return null;
     this.recorder = null;
     const recording = await recorder.stop();
-    this.masterVolume.disconnect(recorder);
+    this.output.disconnect(recorder);
     recorder.dispose();
     return recording;
   }
@@ -422,17 +485,20 @@ export class SoundEngine {
     if (!this.ready) return;
     this.leadSynth.releaseAll();
     Object.values(this.zoneSynths).forEach((synth) => synth.releaseAll());
+    Object.values(this.pairSynths).forEach((synth) => synth.releaseAll());
     this.hazeLevel.gain.rampTo(0, 0.2);
+    const noise = this.noise;
+    if (noise) setTimeout(() => !this.playing && noise.state === "started" && noise.stop(), 400);
     window.speechSynthesis?.cancel();
   }
 }
 
-function speakAloud(text: string) {
+export function speakAloud(text: string) {
   const speech = window.speechSynthesis;
   if (!speech) return;
   speech.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = 1.2;
+  utterance.rate = 1.1;
   utterance.volume = 0.8;
   speech.speak(utterance);
 }

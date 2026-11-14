@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🌍 Earth in Sound
+<img src="public/mark.svg" alt="" width="56">
+
+# Earth in Sound
 
 ### Hear Earth change.
 
@@ -26,6 +28,7 @@ Built for NASA Space Apps, with students, teachers, and curious listeners in min
 | **Planet** | Global temperature anomalies since 1880. Warmer years play higher, brighter notes. |
 | **Poles** | Arctic, tropical, and Antarctic records on one scale, with three voices placed across your headphones. |
 | **My Place** | Monthly temperature, rain, and sunlight since 2001. Search for a city or choose a saved one. |
+| **Compare** | Two cities, one in each ear, on one shared temperature scale over the months they share. |
 | **Events** | NASA's recent natural-event feed, with category sounds and west-to-east stereo placement. |
 | **Scan** | Sweep across NASA maps of air temperature, sea temperature, and vegetation—or explore an image of your own. |
 
@@ -37,12 +40,19 @@ Built for NASA Space Apps, with students, teachers, and curious listeners in min
 
 ## Your first listen
 
-1. Open **Planet since 1880** and press **Play**.
-2. Watch the year and value follow the notes.
-3. Try **Poles vs Tropics** with headphones.
-4. Open **My Place** and choose **Dhaka**—or a city you know.
+Press **Take a listen** for a one-minute guided listen: the planet, the poles, then three years of Dhaka. Pause, skip, replay or leave at any time. Turn on **Voice** under the player's More button (the sliders icon) to hear the captions read aloud.
 
-Change the sound or speed, jump along the chart, or record a single pass to save. Instrument choices apply to Planet, My Place, and Scan; Poles and Events use their own voices.
+Or explore on your own:
+
+1. Open **Planet** and press **Play**.
+2. Watch the year and value follow the notes. Drag the timeline or the chart to jump.
+3. Try **Poles** with headphones.
+4. Open **My Place** and choose **Dhaka**, or a city you know.
+5. Pick a **Range** to hear a decade or a single year.
+6. Use **Compare** to put two cities in your left and right ears.
+7. Open **Data** for the source, units and a CSV, or **Share** to send the same setup.
+
+Change the sound or speed, or record a single pass to save. Sound choices apply to Planet, My Place, and Scan; Poles, Compare and Events use their own fixed voices.
 
 ## Run locally
 
@@ -72,7 +82,7 @@ Already have the repo? Run `npm ci` once after dependency changes, then `npm run
 
 The main pitch mappings use a C major pentatonic scale. Each note is a designed translation of a data value.
 
-Most tracks scale values within the selected series. Listening to two cities separately does **not** compare their absolute temperatures on a shared pitch scale.
+Each view uses one fixed pitch scale for its whole record, so choosing a shorter range keeps the same notes. Poles puts all three regions on one scale. **Compare** puts both cities on one shared °C scale across the months they both have, so the same note means the same temperature in either ear. Listening to two cities one after another in My Place does **not** compare them, because each city has its own scale. Busy event days are thinned to 16 sounds; the chart and CSV keep the full count. Missing values are skipped, never played as zero.
 
 ## Our data
 
@@ -105,6 +115,7 @@ Use the chart, listen to the notes, or inspect the selected values. Playback sta
 | **← / →**, on a track tab | Change tracks |
 | **Home / End**, on a track tab | Select the first or last track |
 | **Tab** | Move between controls |
+| Timeline slider | Arrow keys step through time; the slider announces date and value |
 
 Controls include keyboard support, visible focus, and status messages. We still need feedback from people using different devices and assistive technologies; these features are not a claim of completed accessibility certification.
 
@@ -119,24 +130,32 @@ npm test       # Unit tests, NASA data checks, production build, and offline sim
 npm run build  # TypeScript check and production files in dist/
 ```
 
-See the [developer guide](docs/DEVELOPMENT.md) for data refreshes, deployment, backup setup, and manual checks. The [project notes](docs/PROJECT.md) contain the original pitch material; recheck dated figures before presenting them.
+See the [developer guide](docs/DEVELOPMENT.md) for data refreshes, deployment, backup setup, and manual checks. Submission drafts are in [docs/PROJECT.md](docs/PROJECT.md) and demo scripts in [docs/DEMO.md](docs/DEMO.md).
 
 Want to help? Try a saved city, test a keyboard flow, check a source, or tell us where a sound is hard to understand. Include your browser and the steps that led to the issue.
 
+## New in this version
+
+- **Take a listen:** a short guided listen with captions taken from the data.
+- **Compare:** two cities, one per ear, on one shared scale.
+- **Range:** listen to any span of years. The chart, sound, findings and CSV all follow it.
+- **Share:** a link that restores the view, cities, range, sound and speed without autoplay. Links that hold your location say so first.
+- **Data:** the dataset, source link, units, coverage, retrieval date, baseline, live or saved status, a limitation, and a CSV download.
+- **Findings:** one or two results calculated from the selected data, with ties shown.
+
 ## Next listens
 
-These are planned ideas, not shipped features:
+These are ideas, not shipped features:
 
-- **Compare** — two cities, one shared scale.
-- **Then / Now** — hear equal historical periods side by side.
-- **Seasons** — explore a place's annual rhythm.
-- **Stories** — short guided listens with a clear discovery.
-- **Mix** — isolate temperature, rain, and sunlight.
-- **Share** — send someone the same listening setup.
-- **Learn** — small classroom activities, with English and Bangla support.
+- **Then / Now:** hear equal historical periods side by side.
+- **Mix:** isolate temperature, rain, and sunlight.
+- **Learn:** small classroom activities, with English and Bangla support.
+- **Saved setups:** keep a few favourite listening setups on the device.
+
+[Testing notes](docs/TESTING.md) list what was checked and what still needs people and devices.
 
 ## Credits
 
-Our thanks to NASA GISS, the NASA Langley POWER Project, NASA EONET, and NASA GIBS/ESDIS for the data and imagery, and Open-Meteo for place search. Tone.js and uPlot make the browser sound and charts possible.
+Our thanks to NASA GISS, the NASA Langley POWER Project, NASA EONET, and NASA GIBS/ESDIS for the data and imagery, and Open-Meteo for place search. Tone.js and uPlot make the browser sound and charts possible. The Manrope typeface (SIL Open Font License) is bundled through Fontsource. The Earth-and-wave mark is our own.
 
 Earth in Sound is a team project built using public NASA data. NASA has not endorsed this app.
