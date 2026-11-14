@@ -1,4 +1,6 @@
-export type TrackKind = "global" | "zones" | "place" | "events";
+import type { ScanDetails } from "./scan";
+
+export type TrackKind = "global" | "zones" | "place" | "events" | "scan";
 
 export interface ClimatePoint {
   position: number;
@@ -11,6 +13,9 @@ export interface ClimatePoint {
   antarctic?: number;
   happenings?: EventGroup[];
   headlines?: string[];
+  bands?: number[];
+  bandDetail?: number[];
+  longitude?: number;
 }
 
 export interface EventGroup {
@@ -27,6 +32,7 @@ export interface ClimateTrack {
   fromBackup?: boolean;
   notice?: string;
   eventTotals?: Record<string, number>;
+  scan?: ScanDetails;
 }
 
 export interface Place {
@@ -39,12 +45,12 @@ export interface Place {
 
 const siteRoot = import.meta.env.BASE_URL;
 const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const requestTimeoutMs = 12000;
+const waitMs = 12000;
 
 export const powerParameters = "T2M,PRECTOTCORR,ALLSKY_SFC_SW_DWN";
 export const powerFirstYear = 2001;
 
-export async function fetchWithTimeout(url: string, timeoutMs = requestTimeoutMs): Promise<Response> {
+export async function fetchTimed(url: string, timeoutMs = waitMs): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -78,18 +84,18 @@ function keepSavedCopy(key: string, value: unknown) {
   }
 }
 
-async function loadBundledJson<T>(path: string): Promise<T | null> {
+async function loadSaved<T>(path: string): Promise<T | null> {
   try {
-    const response = await fetchWithTimeout(`${siteRoot}data/${path}`);
+    const response = await fetchTimed(`${siteRoot}data/${path}`);
     return response.ok ? ((await response.json()) as T) : null;
   } catch {
     return null;
   }
 }
 
-export async function loadGlobalTemperature(): Promise<ClimateTrack> {
+export async function loadGlobal(): Promise<ClimateTrack> {
   type GistempFile = { years: { year: number; anomaly: number }[] };
-  let years = (await loadBundledJson<GistempFile>("gistemp.json"))?.years ?? null;
+  let years = (await loadSaved<GistempFile>("gistemp.json"))?.years ?? null;
   let fromBackup = false;
   if (years?.length) {
     keepSavedCopy("earth-in-sound:gistemp", years);
@@ -115,8 +121,8 @@ interface ZoneYear {
   antarctic: number;
 }
 
-export async function loadPolesAndTropics(): Promise<ClimateTrack> {
-  let years = (await loadBundledJson<{ years: ZoneYear[] }>("zones.json"))?.years ?? null;
+export async function loadZones(): Promise<ClimateTrack> {
+  let years = (await loadSaved<{ years: ZoneYear[] }>("zones.json"))?.years ?? null;
   let fromBackup = false;
   if (years?.length) {
     keepSavedCopy("earth-in-sound:zones", years);
@@ -142,7 +148,7 @@ export async function loadPolesAndTropics(): Promise<ClimateTrack> {
 }
 
 export const eonetUrl = "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&days=60";
-const eventWindowDays = 60;
+const windowDays = 60;
 
 export interface EonetEvent {
   title: string;
@@ -150,7 +156,7 @@ export interface EonetEvent {
   geometry: { date: string; type: string; coordinates: unknown }[];
 }
 
-function centreLongitude(geometry: EonetEvent["geometry"][number]): number {
+function centreLon(geometry: EonetEvent["geometry"][number]): number {
   if (geometry.type === "Point") return (geometry.coordinates as number[])[0];
   const ring = (geometry.coordinates as number[][][])[0] ?? [];
   return ring.length ? ring.reduce((sum, corner) => sum + corner[0], 0) / ring.length : 0;
@@ -159,7 +165,7 @@ function centreLongitude(geometry: EonetEvent["geometry"][number]): number {
 export function eventDays(events: EonetEvent[], today = new Date()): ClimatePoint[] {
   const dayKey = (date: Date) => date.toISOString().slice(0, 10);
   const days = new Map<string, { groups: Map<string, { titles: Set<string>; longitudes: number[] }>; headlines: Set<string> }>();
-  for (let back = eventWindowDays - 1; back >= 0; back--) {
+  for (let back = windowDays - 1; back >= 0; back--) {
     days.set(dayKey(new Date(today.getTime() - back * 86400000)), { groups: new Map(), headlines: new Set() });
   }
   for (const event of events) {
@@ -170,7 +176,7 @@ export function eventDays(events: EonetEvent[], today = new Date()): ClimatePoin
       const group = day.groups.get(category) ?? { titles: new Set<string>(), longitudes: [] };
       if (group.titles.has(event.title)) continue;
       group.titles.add(event.title);
-      group.longitudes.push(centreLongitude(geometry));
+      group.longitudes.push(centreLon(geometry));
       day.groups.set(category, group);
       day.headlines.add(event.title);
     }
@@ -209,18 +215,18 @@ function eventTrack(events: EonetEvent[], live: boolean): ClimateTrack {
   };
 }
 
-export async function loadLiveEarthRightNow(): Promise<ClimateTrack> {
-  const response = await fetchWithTimeout(eonetUrl, 45000);
+export async function loadLiveEvents(): Promise<ClimateTrack> {
+  const response = await fetchTimed(eonetUrl, 45000);
   if (!response.ok) throw new Error(`EONET HTTP ${response.status}`);
   const events: EonetEvent[] = (await response.json()).events;
   if (!events?.length) throw new Error("EONET returned no events");
   return eventTrack(events, true);
 }
 
-export async function loadEarthRightNow(): Promise<ClimateTrack> {
-  const saved = (await loadBundledJson<{ events: EonetEvent[] }>("eonet.json"))?.events;
+export async function loadEvents(): Promise<ClimateTrack> {
+  const saved = (await loadSaved<{ events: EonetEvent[] }>("eonet.json"))?.events;
   if (saved?.length) return eventTrack(saved, false);
-  return loadLiveEarthRightNow();
+  return loadLiveEvents();
 }
 
 export function powerUrl(latitude: number, longitude: number, firstYear: number, lastYear: number): string {
@@ -264,7 +270,7 @@ export function parsePower(table: PowerTable): ClimatePoint[] {
 async function fetchPowerLive(place: Place): Promise<PowerTable> {
   const currentYear = new Date().getFullYear();
   for (const lastYear of [currentYear - 1, currentYear - 2]) {
-    const response = await fetchWithTimeout(powerUrl(place.latitude, place.longitude, powerFirstYear, lastYear), 20000);
+    const response = await fetchTimed(powerUrl(place.latitude, place.longitude, powerFirstYear, lastYear), 20000);
     if (response.ok) return (await response.json()).properties.parameter;
   }
   throw new Error("NASA POWER did not return data");
@@ -303,7 +309,7 @@ export async function loadPlace(place: Place, examples: Place[] = []): Promise<C
       notice = `Live NASA POWER data unavailable. Using saved data for ${place.name}.`;
     }
     if (!table && place.slug) {
-      table = (await loadBundledJson<{ parameter: PowerTable }>(`places/${place.slug}.json`))?.parameter ?? null;
+      table = (await loadSaved<{ parameter: PowerTable }>(`places/${place.slug}.json`))?.parameter ?? null;
       if (table) {
         backupNote = " · bundled saved data";
         notice = `Live NASA POWER data unavailable. Using bundled data for ${place.name}.`;
@@ -311,7 +317,7 @@ export async function loadPlace(place: Place, examples: Place[] = []): Promise<C
     }
     if (!table && examples.length) {
       const fallback = nearestExample(place, examples);
-      table = (await loadBundledJson<{ parameter: PowerTable }>(`places/${fallback.slug}.json`))?.parameter ?? null;
+      table = (await loadSaved<{ parameter: PowerTable }>(`places/${fallback.slug}.json`))?.parameter ?? null;
       if (table) {
         shownPlace = fallback;
         backupNote = ` · offline, nearest saved city`;
@@ -334,7 +340,7 @@ export async function loadPlace(place: Place, examples: Place[] = []): Promise<C
 }
 
 export async function searchPlaces(name: string): Promise<Place[]> {
-  const response = await fetchWithTimeout(
+  const response = await fetchTimed(
     `https://geocoding-api.open-meteo.com/v1/search?count=5&language=en&format=json&name=${encodeURIComponent(name)}`,
   );
   if (!response.ok) throw new Error(`Search failed (${response.status})`);

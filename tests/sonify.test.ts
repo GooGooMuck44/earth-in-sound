@@ -48,6 +48,7 @@ describe("track controls", () => {
   it("only offers lead instruments where they change the sound", () => {
     expect(supportsLeadSound("global")).toBe(true);
     expect(supportsLeadSound("place")).toBe(true);
+    expect(supportsLeadSound("scan")).toBe(true);
     expect(supportsLeadSound("zones")).toBe(false);
     expect(supportsLeadSound("events")).toBe(false);
   });

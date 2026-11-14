@@ -7,7 +7,7 @@ const dataFolder = new URL("../public/data/", import.meta.url);
 const examplePlaces = JSON.parse(await readFile(new URL("../src/presets.json", import.meta.url), "utf8"));
 await mkdir(new URL("places/", dataFolder), { recursive: true });
 
-let failedDownloads = 0;
+let failed = 0;
 
 async function download(url, attempts = 3) {
   for (let attempt = 1; ; attempt++) {
@@ -52,7 +52,7 @@ try {
   await saveJson("gistemp.json", { source: globalCsvUrl, baseline: "1951-1980", years });
   console.log(`✓ GISTEMP global: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
 } catch (error) {
-  failedDownloads++;
+  failed++;
   console.error(`✗ GISTEMP global failed: ${error.message}`);
 }
 
@@ -71,7 +71,7 @@ try {
   await saveJson("zones.json", { source: zonalCsvUrl, baseline: "1951-1980", years });
   console.log(`✓ GISTEMP zones: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
 } catch (error) {
-  failedDownloads++;
+  failed++;
   console.error(`✗ GISTEMP zones failed: ${error.message}`);
 }
 
@@ -96,8 +96,56 @@ try {
   await saveJson("eonet.json", { source: eonetUrl, events });
   console.log(`✓ EONET: ${body.events.length} events in the last 60 days`);
 } catch (error) {
-  failedDownloads++;
+  failed++;
   console.error(`✗ EONET failed: ${error.message}`);
+}
+
+const gibs = "https://gibs.earthdata.nasa.gov";
+const maps = {
+  air: { layer: "MERRA2_2m_Air_Temperature_Assimilated_Monthly", colors: "MERRA2_2m_Air_Temperature_Assimilated_Monthly" },
+  sea: { layer: "GHRSST_L4_MUR_Sea_Surface_Temperature", colors: "GHRSST_Sea_Surface_Temperature" },
+  plants: { layer: "MODIS_Terra_L3_NDVI_Monthly", colors: "MODIS_L3_NDVI" },
+};
+const mapUrl = (layer, date) =>
+  `${gibs}/wms/epsg4326/best/wms.cgi?${new URLSearchParams({
+    SERVICE: "WMS",
+    REQUEST: "GetMap",
+    VERSION: "1.3.0",
+    LAYERS: layer,
+    CRS: "EPSG:4326",
+    BBOX: "-90,-180,90,180",
+    WIDTH: "720",
+    HEIGHT: "360",
+    FORMAT: "image/png",
+    TRANSPARENT: "true",
+    TIME: date,
+  })}`;
+
+try {
+  await mkdir(new URL("gibs/", dataFolder), { recursive: true });
+  const caps = await (await download(`${gibs}/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetCapabilities`)).text();
+  const saveFile = async (name, url) =>
+    writeFile(new URL(`gibs/${name}`, dataFolder), Buffer.from(await (await download(url)).arrayBuffer()));
+  const index = { layers: {} };
+  for (const [key, map] of Object.entries(maps)) {
+    const block = caps.slice(caps.indexOf(`<Name>${map.layer}</Name>`));
+    const times = block.match(/<Dimension name="time"[^>]*>([^<]+)</)?.[1] ?? "";
+    const date = times.split(",").at(-1).split("/")[1];
+    if (!date) throw new Error(`no dates for ${map.layer}`);
+    await saveFile(`${key}.png`, mapUrl(map.layer, date));
+    await saveFile(`${map.colors}.xml`, `${gibs}/colormaps/v1.3/${map.colors}.xml`);
+    index.layers[key] = { date, image: `gibs/${key}.png` };
+    if (key === "air") {
+      const then = `1981${date.slice(4)}`;
+      await saveFile("air-then.png", mapUrl(map.layer, then));
+      index.then = { date: then, image: "gibs/air-then.png" };
+    }
+    console.log(`✓ GIBS: ${map.layer} ${date}`);
+  }
+  await saveJson("gibs/index.json", index);
+} catch (error) {
+  failed++;
+  console.error(`✗ GIBS failed: ${error.message}`);
 }
 
 const currentYear = new Date().getFullYear();
@@ -124,10 +172,10 @@ for (const place of examplePlaces) {
       if (lastYear === currentYear - 2) console.error(`✗ POWER ${place.name} failed: ${error.message}`);
     }
   }
-  if (!saved) failedDownloads++;
+  if (!saved) failed++;
 }
 
-if (failedDownloads) {
-  console.error(`${failedDownloads} download(s) failed. Previously saved copies in public/data/ are kept and still used.`);
+if (failed) {
+  console.error(`${failed} download(s) failed. Previously saved copies in public/data/ are kept and still used.`);
   process.exitCode = 1;
 }
