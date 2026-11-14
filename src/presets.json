@@ -4,6 +4,7 @@
   { "slug": "lagos", "name": "Lagos", "country": "Nigeria", "latitude": 6.52, "longitude": 3.38 },
   { "slug": "delhi", "name": "Delhi", "country": "India", "latitude": 28.61, "longitude": 77.21 },
   { "slug": "kathmandu", "name": "Kathmandu", "country": "Nepal", "latitude": 27.72, "longitude": 85.32 },
+  { "slug": "dhaka", "name": "Dhaka", "country": "Bangladesh", "latitude": 23.81, "longitude": 90.41 },
   { "slug": "tokyo", "name": "Tokyo", "country": "Japan", "latitude": 35.68, "longitude": 139.69 },
   { "slug": "sao-paulo", "name": "São Paulo", "country": "Brazil", "latitude": -23.55, "longitude": -46.63 },
   { "slug": "sydney", "name": "Sydney", "country": "Australia", "latitude": -33.87, "longitude": 151.21 }

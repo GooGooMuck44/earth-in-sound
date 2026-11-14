@@ -11,14 +11,21 @@ export class ClimateChart {
   private playhead = document.createElement("div");
   private track: ClimateTrack | null = null;
   private currentStep = 0;
+  private resizeFrame = 0;
   private picture: HTMLDivElement | null = null;
   onJump: (stepNumber: number) => void = () => {};
 
   constructor(private container: HTMLElement) {
     this.playhead.className = "playhead";
     new ResizeObserver(() => {
-      this.plot?.setSize(this.fitSize());
-      if (this.picture) this.movePlayhead(this.currentStep);
+      cancelAnimationFrame(this.resizeFrame);
+      this.resizeFrame = requestAnimationFrame(() => {
+        if (this.plot) {
+          const next = this.fitSize();
+          if (this.plot.width !== next.width || this.plot.height !== next.height) this.plot.setSize(next);
+        }
+        if (this.picture) this.movePlayhead(this.currentStep);
+      });
     }).observe(container);
   }
 
