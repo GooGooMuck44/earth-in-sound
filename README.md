@@ -70,7 +70,7 @@ Already have the repo? Run `npm ci` once after dependency changes, then `npm run
 | Natural events | Fires crackle, storms and volcanoes drum, ice rings. Longitude sets stereo position. |
 | Map scan | Values across the image become notes as the scan moves west to east. |
 
-The main pitch mappings use a C major pentatonic scale. The sound is a designed translation of data, not a recording of Earth or an AI-generated climate record.
+The main pitch mappings use a C major pentatonic scale. Each note is a designed translation of a data value.
 
 Most tracks scale values within the selected series. Listening to two cities separately does **not** compare their absolute temperatures on a shared pitch scale.
 
@@ -135,12 +135,8 @@ These are planned ideas, not shipped features:
 - **Share** — send someone the same listening setup.
 - **Learn** — small classroom activities, with English and Bangla support.
 
-The [Claude upgrade brief](docs/UPGRADE-PROMPT.md) describes the proposed next build.
-
 ## Credits
 
 Our thanks to NASA GISS, the NASA Langley POWER Project, NASA EONET, and NASA GIBS/ESDIS for the data and imagery, and Open-Meteo for place search. Tone.js and uPlot make the browser sound and charts possible.
-
-AI coding assistance has helped with this project. See the [AI notes](docs/DEVELOPMENT.md#ai-notes) for the recorded scope and the disclosures still to complete before submission.
 
 Earth in Sound is a team project built using public NASA data. NASA has not endorsed this app.
