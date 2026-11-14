@@ -124,7 +124,7 @@ export class ClimateChart {
           {},
           { label: "Temperature", scale: "°C", stroke: warmColor, width: 2 },
           { label: "Rain", scale: "rain", fill: themeColor("--rain"), stroke: themeColor("--rain"), paths: rainBars, points: { show: false } },
-          { label: "Sunshine", scale: "sun", stroke: themeColor("--sun"), width: 1, dash: [4, 4] },
+          { label: "Sunshine (MJ/m²/day)", scale: "sun", stroke: themeColor("--sun"), width: 1, dash: [4, 4] },
         ],
       };
     }

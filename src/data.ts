@@ -247,9 +247,9 @@ type PowerTable = Record<string, Record<string, number>>;
 export function parsePower(table: PowerTable): ClimatePoint[] {
   const temperatures = table.T2M ?? {};
   const monthKeys = Object.keys(temperatures)
-    .filter((key) => key.length === 6 && Number(key.slice(4)) >= 1 && Number(key.slice(4)) <= 12)
+    .filter((key) => /^\d{4}(0[1-9]|1[0-2])$/.test(key))
     .sort();
-  const usable = (value: number | undefined) => (value === undefined || value <= -990 ? NaN : value);
+  const usable = (value: number | undefined) => (typeof value !== "number" || !Number.isFinite(value) || value <= -990 ? NaN : value);
   const points: ClimatePoint[] = [];
   for (const key of monthKeys) {
     const temperature = usable(temperatures[key]);

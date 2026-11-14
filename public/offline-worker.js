@@ -1,5 +1,5 @@
 const cachePrefix = "earth-in-sound-";
-const cacheName = `${cachePrefix}v5`;
+const cacheName = `${cachePrefix}v6`;
 const examplePlaces = ["new-york", "london", "lagos", "delhi", "kathmandu", "dhaka", "tokyo", "sao-paulo", "sydney"];
 const startupFiles = [
   "./data/gistemp.json",
