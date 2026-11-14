@@ -355,7 +355,7 @@ function showReadout(stepNumber: number) {
         ? `${point.temperature} events${point.headlines?.length ? ` · ${point.headlines.slice(0, 3).join(" · ")}` : ""}`
         : track.kind === "zones"
         ? `${withSign(point.arctic ?? NaN)} · ${withSign(point.tropics ?? NaN)} · ${withSign(point.antarctic ?? NaN)} °C`
-        : `${oneDecimal(point.temperature)} °C · ${oneDecimal(point.rainfall)} mm · ${oneDecimal(point.sunshine)} kWh`;
+        : `${oneDecimal(point.temperature)} °C · ${oneDecimal(point.rainfall)} mm/day · ${oneDecimal(point.sunshine)} MJ/m²/day`;
   chart.movePlayhead(stepNumber);
 }
 

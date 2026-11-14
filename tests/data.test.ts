@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import presets from "../src/presets.json";
-import { eventDays, nearestExample, type EonetEvent, type Place } from "../src/data";
+import { eventDays, nearestExample, parsePower, type EonetEvent, type Place } from "../src/data";
 
 describe("EONET event grouping", () => {
   it("groups unique titles by day and category", () => {
@@ -38,7 +38,7 @@ describe("EONET event grouping", () => {
 describe("saved example places", () => {
   it("includes Dhaka with bundled-data coordinates", () => {
     expect(presets).toContainEqual(
-      expect.objectContaining({ slug: "dhaka", name: "Dhaka", country: "Bangladesh", latitude: 23.81, longitude: 90.41 }),
+      expect.objectContaining({ slug: "dhaka", name: "Dhaka", country: "Bangladesh", latitude: 23.8103, longitude: 90.4125 }),
     );
   });
 
@@ -49,5 +49,18 @@ describe("saved example places", () => {
       { name: "East", latitude: 0, longitude: 20 },
     ];
     expect(nearestExample({ name: "Target", latitude: 1.2, longitude: 1.1 }, examples).name).toBe("Near");
+  });
+});
+
+
+describe('POWER monthly parsing', () => {
+  it('excludes annual summaries, malformed month keys and fill values without losing negative temperatures', () => {
+    const points = parsePower({
+      T2M: { '202301': -5, '202302': -999, '202313': 12, 'abcd01': 20, '202300': 2, '202303': null as unknown as number, '202304': Infinity },
+      PRECTOTCORR: { '202301': 2 },
+      ALLSKY_SFC_SW_DWN: { '202301': 10 },
+    });
+    expect(points).toHaveLength(1);
+    expect(points[0]).toMatchObject({ label: 'Jan 2023', temperature: -5, rainfall: 2, sunshine: 10 });
   });
 });
