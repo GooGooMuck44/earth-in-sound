@@ -98,10 +98,6 @@ Unchecked items below are tasks, not claims of completed testing.
 
 The ResizeObserver callback defers work to an animation frame and resizes uPlot only when dimensions change. This avoids an application-created resize feedback loop. No global browser warning suppression is used.
 
-## AI notes
+## Submission notes
 
-Existing project notes record Claude assistance with code and documentation. Codex has also assisted with NASA validation, unit corrections, PR conflict resolution, tests, and this documentation update.
-
-Before submission, the team should review these statements and complete a dated record of tools, representative prompts, affected files, human decisions, and checks actually performed. Do not describe coding assistance as an AI model trained on NASA records. Do not claim user testing or accessibility validation that has not happened.
-
-Keep the project page, source credits, asset permissions, and AI disclosure consistent with the final submitted build. Confirm the applicable challenge and current submission requirements with official guidance and the Local Lead.
+Keep the project page, source credits, asset permissions, and documentation consistent with the final build. Confirm the applicable challenge and current submission requirements with official guidance and the Local Lead. Record only checks and user testing that actually took place.
