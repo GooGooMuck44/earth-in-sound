@@ -135,6 +135,15 @@ These are planned ideas, not shipped features:
 - **Share** — send someone the same listening setup.
 - **Learn** — small classroom activities, with English and Bangla support.
 
+## Our team
+
+We are four fifth-semester students from the **Department of Software Engineering, University of Dhaka**, building Earth in Sound together.
+
+- **Nafisa Usrat**
+- **Prottasha Saha Ayoishee**
+- **Fahmida Munni**
+- **Miti Ara Ferdousi**
+
 ## Credits
 
 Our thanks to NASA GISS, the NASA Langley POWER Project, NASA EONET, and NASA GIBS/ESDIS for the data and imagery, and Open-Meteo for place search. Tone.js and uPlot make the browser sound and charts possible.
