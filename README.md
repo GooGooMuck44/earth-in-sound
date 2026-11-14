@@ -1,145 +1,146 @@
-# Earth in Sound
+<div align="center">
 
-Hear NASA climate and natural-event data as music. Earth in Sound is a browser app for the NASA Space Apps Challenge 2026, built with Tone.js and uPlot.
+# 🌍 Earth in Sound
 
-## The five tracks
+### Hear Earth change.
 
-- **Planet since 1880:** NASA GISS GISTEMP v4 global temperature anomaly, one note per year. Warmer years play higher, brighter notes with more heat-haze noise; a bass note marks each decade.
-- **Poles vs Tropics:** the Arctic plays on the left, the Tropics in the centre, and the Antarctic on the right. The three regions always use distinct fixed voices, so the instrument picker is disabled on this track. Headphones make the stereo comparison clearest.
-- **My Place:** NASA POWER monthly temperature, rainfall, and sunshine from 2001 onward. Search for a city while online or choose a saved example. Dhaka, Bangladesh is included with bundled data.
-- **Scan the Planet:** NASA GIBS air temperature, sea surface temperature and vegetation imagery, with a west-to-east scan and image upload.
-- **Earth right now:** NASA EONET events from the last 60 days. Category-specific sounds identify fires, storms, volcanoes, ice, snow, and other events; longitude controls stereo position. Bundled EONET data loads first and a live refresh follows when the network is available.
+Explore NASA climate records through sound, maps, and music.<br>
+Start with the planet. Find your city. Listen a little closer.
 
-Press **▶** to listen. The chart playhead follows the music, and clicking the chart jumps to a point in time. The instrument picker changes the lead voice on Planet and My Place. Loop repeats normal playback, but recordings always stop after one pass. “Voice” announces decade/year markers.
+[Explore the project](https://googoomuck44.github.io/earth-in-sound/) · [Run locally](#run-locally) · [Our data](#our-data) · [Build with us](#build-with-us)
 
-## Offline and fallback behaviour
+</div>
 
-After the first complete visit, the service worker caches the built HTML, hashed JavaScript and CSS, all five bundled track datasets, and every saved example city. The app can then reopen at the same GitHub Pages URL without a network connection. Cache versions are replaced on deployment so an old app shell cannot keep loading new, incompatible assets.
+---
 
-Saved My Place examples include New York, London, Lagos, Delhi, Kathmandu, **Dhaka**, Tokyo, São Paulo, and Sydney. A place previously downloaded in the same browser can also be reused offline. Searching for a completely new city needs the Open-Meteo geocoding service, and fetching its climate needs NASA POWER. When either service is unavailable, the interface directs the listener to saved cities; when possible, it explicitly plays the nearest saved city instead of silently substituting data.
+Climate records tell a story. We want more people to be able to follow it.
 
-The first successful visit must finish while online. Clearing site data removes the offline cache and browser-saved places.
+Earth in Sound turns NASA data into notes you can explore in your browser. Follow global temperature through time, hear the poles in stereo, or listen to the seasons in Dhaka and other cities. A chart moves with the sound, so you can connect each note to its value.
 
-## Controls and accessibility
+Built for NASA Space Apps, with students, teachers, and curious listeners in mind. No account, backend, or API key is needed for the sources this app uses.
 
-- **Tab:** move through the track tabs and player controls.
-- **Left/Right Arrow while a track tab is focused:** select and focus the previous/next track.
-- **Home/End while a track tab is focused:** select and focus the first/last track.
-- **Enter or Space on a focused tab/control:** activate it.
-- **Space outside a control:** play or pause.
-- **Left/Right Arrow outside a control:** step through the current track; hold Shift to move 10 steps.
+## Pick a view
 
-Status, offline, fallback, and playback messages use live regions and avoid exposing raw network errors. The tab row may scroll horizontally on a narrow screen, but the page itself should not overflow.
+| View | What you can explore |
+| --- | --- |
+| **Planet** | Global temperature anomalies since 1880. Warmer years play higher, brighter notes. |
+| **Poles** | Arctic, tropical, and Antarctic records on one scale, with three voices placed across your headphones. |
+| **My Place** | Monthly temperature, rain, and sunlight since 2001. Search for a city or choose a saved one. |
+| **Events** | NASA's recent natural-event feed, with category sounds and west-to-east stereo placement. |
+| **Scan** | Sweep across NASA maps of air temperature, sea temperature, and vegetation—or explore an image of your own. |
 
-## Run, test, and build
+<p align="center">
+  <img src="public/data/gibs/air.png" alt="Bundled NASA GIBS map showing global air temperature with a blue-to-red colour scale" width="720">
+  <br>
+  <sub>A saved NASA GIBS air-temperature map used by Scan. This is source imagery, not an app screenshot.</sub>
+</p>
 
-Node 22.12 or newer is required for the current test runner.
+## Your first listen
+
+1. Open **Planet since 1880** and press **Play**.
+2. Watch the year and value follow the notes.
+3. Try **Poles vs Tropics** with headphones.
+4. Open **My Place** and choose **Dhaka**—or a city you know.
+
+Change the sound or speed, jump along the chart, or record a single pass to save. Instrument choices apply to Planet, My Place, and Scan; Poles and Events use their own voices.
+
+## Run locally
+
+Install **Node.js 22.12 or newer**, then:
 
 ```bash
+git clone https://github.com/GooGooMuck44/earth-in-sound.git
+cd earth-in-sound
 npm ci
 npm run dev
-npm test
-npm run build
 ```
 
-`npm test` runs unit tests, TypeScript checking, a production build, and a simulated first-visit/offline reopen against the built service worker. `npm run test:offline` can be repeated after any production build.
+Open the local address Vite prints in your terminal. The repository includes saved data, so a fresh NASA download is optional.
 
-Refresh committed NASA data with:
+Already have the repo? Run `npm ci` once after dependency changes, then `npm run dev`.
 
-```bash
-npm run data
-```
+## How it sounds
 
-NASA's GISTEMP server cannot be fetched directly by a browser, so global and zonal data live in `public/data/`. NASA POWER and EONET can refresh in the browser, while committed copies keep demos reliable. Commit intended changes in `public/data/` after refreshing.
-
-## Recording limitations
-
-“Record” captures one full pass and offers a WebM download; enabling Loop never makes a recording repeat forever. The control is disabled when the browser does not expose `MediaRecorder`. WebM download, playback, and sharing support varies, especially across Safari/iOS versions, so test the exact target browser before a presentation. Recording does not request microphone access.
-
-## Deploy
-
-**GitHub Pages:** in repository Settings → Pages, choose **GitHub Actions**. `.github/workflows/deploy.yml` refreshes NASA data, builds, and publishes on pushes to `main`.
-
-**Netlify, Cloudflare Pages, or Vercel:** use `npm run build` and publish `dist`.
-
-The Vite base is relative (`./`) so the generated assets and offline worker stay under the repository's GitHub Pages path.
-
-## Backup laptop guide
-
-For a complete rebuild, copy or clone the repository to the other laptop, install Node 22.12+, then run:
-
-```bash
-npm ci
-npm run build
-npm test
-npm run preview -- --host 127.0.0.1
-```
-
-For a no-build backup, copy the entire `dist/` folder and serve it over HTTP from that folder, for example:
-
-```bash
-python3 -m http.server 4173 --directory dist
-```
-
-Open `http://localhost:4173/` once and wait for every track to load before disconnecting. Do not open `index.html` via `file://`; browsers do not enable service workers there.
-
-## Manual release checklist
-
-These checks are intentionally left unchecked; they are not claims that physical-device testing occurred.
-
-- [ ] Desktop Chrome: load all five tracks, play/pause, change instrument where enabled, loop once, record once, then reopen offline.
-- [ ] Desktop Firefox: repeat playback, keyboard-tab, offline, and recording checks.
-- [ ] Android Chrome at about 390 px: verify tap targets, horizontally scrollable track tabs, no page-level horizontal overflow, playback, and offline reopen.
-- [ ] iPhone Safari: verify audio starts after a tap, layout at narrow width, Voice behaviour, and whether recording/download is supported on that version.
-- [ ] With live APIs blocked: verify saved EONET, every example city including Dhaka, clear search guidance, and nearest-city fallback.
-
-## ResizeObserver note
-
-The chart resize callback now defers work to the next animation frame and only calls uPlot when width or height actually changed. This avoids an application-created resize feedback loop that could surface as “ResizeObserver loop completed with undelivered notifications.” A browser may still report that message for extensions or unrelated library/layout work; no global error suppression is used.
-
-## How the sound works
-
-| Data | Sound |
+| Data | What you hear |
 | --- | --- |
-| Value scaled to 0–1 across a series | index into a three-octave C major pentatonic scale |
-| GISTEMP global anomaly | pitch, low-pass brightness, pink-noise heat haze |
-| GISTEMP zonal anomaly | three fixed voices panned Arctic left, Tropics centre, Antarctic right |
-| POWER temperature | pitch |
-| POWER rainfall | one to four falling notes per month |
-| POWER sunshine | filter cutoff from dark to bright |
-| EONET category | crackle, drum, bell, or pluck |
-| EONET longitude | stereo pan from west to east |
+| Temperature | Higher values become higher notes. |
+| Rain | Wetter months add more falling notes. |
+| Sunlight | Brighter months open the sound's filter. |
+| Polar regions | Three distinct voices: Arctic left, Tropics centre, Antarctic right. |
+| Natural events | Fires crackle, storms and volcanoes drum, ice rings. Longitude sets stereo position. |
+| Map scan | Values across the image become notes as the scan moves west to east. |
 
-Code map: `src/data.ts` loads NASA data, `src/sonify.ts` maps data to sound and timing, `src/chart.ts` renders uPlot, `src/main.ts` coordinates the UI, and `scripts/fetch-data.mjs` refreshes bundled data.
+The main pitch mappings use a C major pentatonic scale. The sound is a designed translation of data, not a recording of Earth or an AI-generated climate record.
 
-## Future ideas
+Most tracks scale values within the selected series. Listening to two cities separately does **not** compare their absolute temperatures on a shared pitch scale.
 
-- A compare mode that plays two cities in stereo.
+## Our data
 
-## Data credits
+| Source | What it brings | Keep in mind |
+| --- | --- | --- |
+| [NASA GISTEMP v4](https://data.giss.nasa.gov/gistemp/) | Global and zonal temperature records | Anomalies in °C relative to **1951–1980**. |
+| [NASA POWER](https://power.larc.nasa.gov/docs/services/api/temporal/monthly/) | Local temperature, precipitation, and sunlight | The AG response uses **°C**, **mm/day**, and **MJ/m²/day**. Rain is a mean daily rate, not a monthly total. |
+| [NASA EONET v3](https://eonet.gsfc.nasa.gov/docs/v3) | Recent tracked natural events | A dated event feed, not a complete disaster census or evidence of climate causation. |
+| [NASA GIBS](https://nasa-gibs.github.io/gibs-api-docs/) | Earth imagery and colour legends | Values inferred from rendered colours are approximate. Uploaded images use colour and brightness, not scientific measurements. |
+| [Open-Meteo](https://open-meteo.com/en/docs/geocoding-api) | Place search | Geocoding is provided under CC BY 4.0. |
 
-- GISTEMP Team, 2026: GISS Surface Temperature Analysis (GISTEMP), version 4. NASA Goddard Institute for Space Studies. https://data.giss.nasa.gov/gistemp/
-- NASA Langley Research Center POWER Project, funded through the NASA Earth Science Applied Science Program. https://power.larc.nasa.gov/
-- NASA Earth Observatory Natural Event Tracker (EONET). https://eonet.gsfc.nasa.gov/
-- Place search: Open-Meteo Geocoding API (CC BY 4.0).
+Saved climate files include their source and retrieval time. POWER files also retain parameter units and API metadata. The downloader checks annual records and requires at least 24 usable months across all three POWER parameters before replacing a saved city file.
 
-## Refreshing and validating NASA climate data
+## Ready for patchy Wi-Fi
 
-This app uses NASA climate records with deterministic sound mappings; it does not train an AI model or create synthetic climate observations. NASA's general portals are discovery resources, not a training dataset.
+After a complete first online visit to a production build, the app caches its interface and bundled data for offline use.
 
-Refresh just the climate records (including the Dhaka offline preset):
+Saved cities: **Dhaka, New York, London, Lagos, Delhi, Kathmandu, Tokyo, São Paulo, and Sydney**.
+
+New place searches and fresh downloads need a connection. Previously saved places may still work offline. If the app substitutes a nearby saved city, it names that city. Clearing browser site data removes local copies.
+
+## Made for more ways to explore
+
+Use the chart, listen to the notes, or inspect the selected values. Playback starts when you choose it.
+
+| Key | Action |
+| --- | --- |
+| **Space**, outside a control | Play or pause |
+| **← / →**, outside a control | Step through the track; hold **Shift** to move 10 steps |
+| **← / →**, on a track tab | Change tracks |
+| **Home / End**, on a track tab | Select the first or last track |
+| **Tab** | Move between controls |
+
+Controls include keyboard support, visible focus, and status messages. We still need feedback from people using different devices and assistive technologies; these features are not a claim of completed accessibility certification.
+
+**Recording:** one pass, saved as WebM where the browser supports it. No microphone access is needed. Playback and sharing support vary by browser, especially on Safari and iOS.
+
+## Build with us
+
+The app uses **TypeScript · Vite · Tone.js · uPlot**.
 
 ```bash
-npm ci
-npm run data -- --only=global,zones,power
-npm test
-npm run build
+npm test       # Unit tests, NASA data checks, production build, and offline simulation
+npm run build  # TypeScript check and production files in dist/
 ```
 
-The default `npm run data` still refreshes all sources, including EONET and GIBS. Supported `--only` groups are `global,zones,power,eonet,gibs`. Commit the updated `public/data/` files with your contribution. Failed climate downloads keep the previous saved file and cause a nonzero exit code.
+See the [developer guide](docs/DEVELOPMENT.md) for data refreshes, deployment, backup setup, and manual checks. The [project notes](docs/PROJECT.md) contain the original pitch material; recheck dated figures before presenting them.
 
-Climate downloads are checked before replacing saved files: GISTEMP annual records must be numeric and ordered, and POWER must contain at least 24 complete months for all three parameters with the expected units. Missing values (`-999`) and annual summary entries (month `13`) are not monthly observations. The monthly POWER files retain NASA parameter descriptions, units, API header, original request URL, and retrieval time for traceability.
+Want to help? Try a saved city, test a keyboard flow, check a source, or tell us where a sound is hard to understand. Include your browser and the steps that led to the issue.
 
-POWER uses the `AG` community: temperature is in degrees Celsius, precipitation is the monthly mean daily rate in **mm/day**, and shortwave irradiance is **MJ/m²/day**. These are the units shown by the app; precipitation is not a monthly rainfall total. GISTEMP anomalies remain relative to **1951–1980**. Comparing separately normalized city tracks by pitch does not compare their absolute temperatures.
+## Next listens
 
-Official references: [GISTEMP v4](https://data.giss.nasa.gov/gistemp/), [POWER monthly API](https://power.larc.nasa.gov/docs/services/api/temporal/monthly/), [EONET v3](https://eonet.gsfc.nasa.gov/docs/v3), and [NASA Earthdata GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api). These endpoints do not require a NASA API key. Other NASA products may require a key or Earthdata Login.
+These are planned ideas, not shipped features:
+
+- **Compare** — two cities, one shared scale.
+- **Then / Now** — hear equal historical periods side by side.
+- **Seasons** — explore a place's annual rhythm.
+- **Stories** — short guided listens with a clear discovery.
+- **Mix** — isolate temperature, rain, and sunlight.
+- **Share** — send someone the same listening setup.
+- **Learn** — small classroom activities, with English and Bangla support.
+
+The [Claude upgrade brief](docs/UPGRADE-PROMPT.md) describes the proposed next build.
+
+## Credits
+
+Our thanks to NASA GISS, the NASA Langley POWER Project, NASA EONET, and NASA GIBS/ESDIS for the data and imagery, and Open-Meteo for place search. Tone.js and uPlot make the browser sound and charts possible.
+
+AI coding assistance has helped with this project. See the [AI notes](docs/DEVELOPMENT.md#ai-notes) for the recorded scope and the disclosures still to complete before submission.
+
+Earth in Sound is a team project built using public NASA data. NASA has not endorsed this app.
