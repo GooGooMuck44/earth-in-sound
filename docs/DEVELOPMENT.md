@@ -48,9 +48,15 @@ POWER files retain the request URL, retrieval time, NASA parameter descriptions,
 | `src/scan.ts` | NASA imagery and custom-image scanning |
 | `src/sonify.ts` | Sound mappings, timing, instruments, and recording |
 | `src/chart.ts` | Charts, map display, and playhead |
-| `src/main.ts` | Interface state and controls |
-| `src/ui.ts` | Track navigation helpers |
-| `src/style.css` | Layout and visual styling |
+| `src/main.ts` | Interface state, player, dialogs and guided listen |
+| `src/ui.ts` | View order and tab key navigation |
+| `src/compare.ts` | Two-city loading, shared months and shared scale |
+| `src/range.ts` | Selected listening range |
+| `src/findings.ts` | Findings calculated from the selected data |
+| `src/csv.ts` | CSV and notes export |
+| `src/share.ts` | Share-link building and validation |
+| `src/icons.ts` | Inline SVG icons |
+| `src/style.css` | Design tokens, layout and visual styling |
 | `src/presets.json` | Saved example cities |
 | `scripts/fetch-data.mjs` | NASA data refresh |
 | `scripts/validate-nasa.mjs` | Download validation |
@@ -86,13 +92,18 @@ Open the local site while online and let the worker finish caching. Confirm offl
 
 Unchecked items below are tasks, not claims of completed testing.
 
-- [ ] Desktop Chrome: all five views, playback, instruments, looping, recording, and offline reopen.
+- [ ] Desktop Chrome: all six views, playback, instruments, looping, recording, and offline reopen.
+- [ ] Guided listen with Voice on and off; Compare with headphones; Range, Share and CSV.
 - [ ] Desktop Firefox: playback, keyboard navigation, offline use, and recording.
 - [ ] Android Chrome around 390 px: reachable controls, scrolling tabs, no page overflow, and offline reopen.
 - [ ] iPhone Safari: tap-to-start audio, narrow layout, speech support, and recording/download compatibility.
 - [ ] With live APIs unavailable: saved EONET, every saved city, clear search guidance, and named nearest-city fallback.
 - [ ] Headphones: polar separation, dense event days, comfortable volume, and narration balance.
 - [ ] Assistive technology: focus order, control names, useful status announcements, and accessible values.
+
+## Design tokens
+
+Colours, spacing and corners live as CSS custom properties at the top of `src/style.css`. Green marks actions and selection, blue is water and rain, gold is sunlight and findings, coral is warmth and the first compared city, ice is the Arctic. Scan maps keep NASA's own colormap, shown as a legend under the map. Every state also has a shape, label or icon, so colour is never the only cue.
 
 ## Chart resizing
 

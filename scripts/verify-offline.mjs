@@ -75,6 +75,9 @@ for (const required of ["data/gistemp.json", "data/zones.json", "data/eonet.json
   assert.ok(stored.has(new URL(required, context.self.registration.scope).href), `first visit did not cache ${required}`);
 }
 
+assert.ok([...stored.keys()].some((key) => key.endsWith(".woff2")), "first visit did not cache the bundled font");
+assert.ok(stored.has(new URL("mark.svg", context.self.registration.scope).href), "first visit did not cache the icon");
+
 online = false;
 let offlineResponse;
 listeners.get("fetch")({
@@ -84,4 +87,5 @@ listeners.get("fetch")({
 assert.match(await (await offlineResponse).text(), /Earth in Sound/);
 
 console.log(`✓ first-visit cache includes ${assetPaths.length} hashed assets and all bundled track data`);
+console.log("✓ font and icon cached for offline use");
 console.log("✓ offline navigation reopens the cached app at the GitHub Pages base path");

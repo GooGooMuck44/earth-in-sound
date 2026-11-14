@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Hear NASA climate data: GISTEMP global temperature and NASA POWER local climate, sonified in the browser with Tone.js.",
+  "description": "Hear Earth change: NASA GISTEMP, POWER, EONET and GIBS data as sound in the browser.",
   "scripts": {
     "data": "node scripts/fetch-data.mjs",
     "dev": "vite",
@@ -16,6 +16,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@fontsource-variable/manrope": "^5.2.8",
     "tone": "^15.1.22",
     "uplot": "^1.6.32"
   },

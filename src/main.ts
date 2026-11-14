@@ -1,559 +1,961 @@
 import "./style.css";
 import presetFile from "./presets.json";
-import { ClimateChart } from "./chart";
+import { ClimateChart, type Key } from "./chart";
+import { loadComparison } from "./compare";
+import { fileStem, notes, toCsv } from "./csv";
 import {
-  loadGlobal,
-  loadPlace,
   loadEvents,
+  loadGlobal,
   loadLiveEvents,
+  loadPlace,
   loadZones,
+  placeName,
   searchPlaces,
-  trendPerYear,
-  yearlyAverages,
+  type ClimatePoint,
   type ClimateTrack,
   type Place,
   type TrackKind,
 } from "./data";
-import {
-  SoundEngine,
-  eventSteps,
-  globalSteps,
-  placeSteps,
-  scanSteps,
-  shouldLoopPlayback,
-  supportsLeadSound,
-  zoneSteps,
-  type LeadSound,
-  type SoundStep,
-} from "./sonify";
-import { tabAfterKey } from "./ui";
-import { latestMonths, loadImageScan, loadScan, scanLayers, spotLabel, type ScanLayer } from "./scan";
+import { findingsFor, signed } from "./findings";
+import { fillIcons, icon } from "./icons";
+import { clampRange, isFull, rangeKinds, rangeLabel, slice, span, yearsIn, type YearRange } from "./range";
+import { latestMonths, loadImageScan, loadScan, scanLayers, type ScanLayer } from "./scan";
+import { buildSetup, parseSetup, sharesLocation, type Setup } from "./share";
+import { SoundEngine, shouldLoopPlayback, speakAloud, stepsFor, supportsLeadSound, type LeadSound, type SoundStep } from "./sonify";
+import { tabAfterKey, trackOrder } from "./ui";
 
-const examplePlaces = presetFile as Place[];
-const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+const presets = presetFile as Place[];
+const dhaka = presets.find((place) => place.slug === "dhaka")!;
+const london = presets.find((place) => place.slug === "london")!;
+const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+
 const page = {
-  tabs: {
-    global: element("tab-global"),
-    zones: element("tab-zones"),
-    place: element("tab-place"),
-    events: element("tab-events"),
-    scan: element("tab-scan"),
-  } as Record<TrackKind, HTMLElement>,
-  placeTools: element("place-tools"),
-  scanTools: element("scan-tools"),
-  layerPicker: element<HTMLSelectElement>("layer"),
-  monthPicker: element<HTMLInputElement>("month"),
-  thenNowToggle: element<HTMLInputElement>("then-now"),
-  thenNowLabel: element("then-now-label"),
-  picturePicker: element<HTMLInputElement>("picture"),
-  pictureWords: element("picture-words"),
-  searchForm: element<HTMLFormElement>("search"),
-  searchBox: element<HTMLInputElement>("q"),
-  nearMeButton: element("geo"),
-  searchResults: element("results"),
-  exampleList: element("presets"),
-  title: element("title"),
-  playButton: element<HTMLButtonElement>("play"),
-  restartButton: element("restart"),
-  recordButton: element<HTMLButtonElement>("record"),
-  downloadLink: element<HTMLAnchorElement>("download"),
-  nowLabel: element("now-label"),
-  nowValue: element("now-value"),
-  speedPicker: element<HTMLSelectElement>("speed"),
-  instrumentPicker: element<HTMLSelectElement>("instrument"),
-  instrumentControl: element("instrument-control"),
-  loopToggle: element<HTMLInputElement>("loop"),
-  narrateToggle: element<HTMLInputElement>("narrate"),
-  volumeSlider: element<HTMLInputElement>("vol"),
-  status: element("status"),
-  connection: element("connection"),
-  firstListenHint: element("first-listen-hint"),
-  headphonesHint: element("headphones-hint"),
-  soundGuide: element("mapping"),
-  findings: element("facts"),
-  source: element("source"),
+  tabs: Object.fromEntries(trackOrder.map((kind) => [kind, $(`tab-${kind}`)])) as Record<TrackKind, HTMLButtonElement>,
+  hint: $("hint"),
+  title: $("title"),
+  subtitle: $("subtitle"),
+  badge: $("badge"),
+  placeTools: $("place-tools"),
+  compareTools: $("compare-tools"),
+  scanTools: $("scan-tools"),
+  cityA: $<HTMLSelectElement>("city-a"),
+  cityB: $<HTMLSelectElement>("city-b"),
+  layer: $<HTMLSelectElement>("layer"),
+  month: $<HTMLInputElement>("month"),
+  thenNow: $<HTMLInputElement>("then-now"),
+  thenNowLabel: $("then-now-label"),
+  picture: $<HTMLInputElement>("picture"),
+  pictureLabel: $("picture-label"),
+  pictureWords: $("picture-words"),
+  legend: $("legend"),
+  key: $("key"),
+  search: $<HTMLFormElement>("search"),
+  query: $<HTMLInputElement>("q"),
+  geo: $<HTMLButtonElement>("geo"),
+  results: $("results"),
+  presetList: $("presets"),
+  range: $("range"),
+  from: $<HTMLSelectElement>("from"),
+  to: $<HTMLSelectElement>("to"),
+  rangeReset: $<HTMLButtonElement>("range-reset"),
+  findings: $("findings"),
+  mapping: $("mapping"),
+  scaleNote: $("scale-note"),
+  status: $("status"),
+  connection: $("connection"),
+  play: $<HTMLButtonElement>("play"),
+  restart: $<HTMLButtonElement>("restart"),
+  scrub: $<HTMLInputElement>("scrub"),
+  nowLabel: $("now-label"),
+  nowValue: $("now-value"),
+  speed: $<HTMLSelectElement>("speed"),
+  volume: $<HTMLInputElement>("vol"),
+  record: $<HTMLButtonElement>("record"),
+  download: $<HTMLAnchorElement>("download"),
+  more: $<HTMLButtonElement>("more"),
+  extra: $("extra"),
+  instrument: $<HTMLSelectElement>("instrument"),
+  instrumentControl: $("instrument-control"),
+  loop: $<HTMLInputElement>("loop"),
+  narrate: $<HTMLInputElement>("narrate"),
+  recordNote: $("record-note"),
+  wave: $<HTMLCanvasElement>("wave"),
+  about: $<HTMLDialogElement>("about"),
+  data: $<HTMLDialogElement>("data"),
+  dataList: $("data-list"),
+  csv: $<HTMLAnchorElement>("csv"),
+  notes: $<HTMLAnchorElement>("notes"),
+  share: $<HTMLDialogElement>("share"),
+  shareLink: $<HTMLInputElement>("share-link"),
+  shareWarning: $("share-warning"),
+  copy: $<HTMLButtonElement>("copy"),
+  copied: $("copied"),
+  tour: $("tour"),
+  tourStep: $("tour-step"),
+  tourCaption: $("tour-caption"),
 };
 
-const stepSeconds: Record<TrackKind, number> = { global: 0.5, zones: 0.5, place: 0.25, events: 0.4, scan: 0.25 };
+const stepSeconds: Record<TrackKind, number> = { global: 0.5, zones: 0.5, place: 0.25, compare: 0.25, events: 0.4, scan: 0.25 };
+const calm = matchMedia("(prefers-reduced-motion: reduce)");
 
 const engine = new SoundEngine();
-const chart = new ClimateChart(element("chart"));
+const chart = new ClimateChart($("chart"));
 
-let track: ClimateTrack | null = null;
+let view: TrackKind = "global";
+let full: ClimateTrack | null = null;
+let shown: ClimateTrack | null = null;
+let fullSteps: SoundStep[] = [];
 let steps: SoundStep[] = [];
+let range: YearRange | null = null;
+let pendingRange: Partial<YearRange> | null = null;
 let currentStep = 0;
 let scheduled = false;
 let latestRequest = 0;
-let activeTab: TrackKind = "global";
+let place: Place = dhaka;
+let pair: [Place, Place] = [dhaka, london];
+const known: Place[] = [...presets];
+let lastLoad: (() => void) | null = null;
+let exportUrls: string[] = [];
 
-const secondsPerStep = () =>
-  track ? stepSeconds[track.kind] / Number(page.speedPicker.value) : 0.5;
-const oneDecimal = (value: number | undefined, digits = 1) =>
-  value == null || !Number.isFinite(value) ? "–" : value.toFixed(digits);
-const withSign = (value: number, digits = 2) =>
-  (value > 0 ? "+" : value < 0 ? "−" : "") + Math.abs(value).toFixed(digits);
-const average = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
+const secondsPerStep = () => stepSeconds[view] / Number(page.speed.value);
 
-async function showTrack(loadTrack: () => Promise<ClimateTrack>) {
-  const request = ++latestRequest;
-  await stopRecordingIfNeeded();
+function say(text: string, retry?: () => void) {
+  page.status.textContent = text;
+  if (retry) {
+    const again = document.createElement("button");
+    again.type = "button";
+    again.className = "quiet small";
+    again.textContent = "Try again";
+    again.addEventListener("click", retry);
+    page.status.append(" ", again);
+  }
+}
+
+function setPlayIcon(playing: boolean) {
+  page.play.innerHTML = icon(playing ? "pause" : "play");
+  page.play.setAttribute("aria-label", playing ? "Pause" : "Play");
+  page.play.classList.toggle("playing", playing);
+  cancelAnimationFrame(waveFrame);
+  waveFrame = requestAnimationFrame(drawWave);
+}
+
+function halt() {
   engine.stop();
-  showPlaying(false);
   scheduled = false;
-  page.playButton.disabled = true;
-  page.recordButton.disabled = true;
-  page.downloadLink.hidden = true;
-  page.status.textContent = "Loading…";
+  setPlayIcon(false);
+}
+
+function loadingName(kind: TrackKind) {
+  if (kind === "place") return place.name;
+  if (kind === "compare") return `${pair[0].name} and ${pair[1].name}`;
+  if (kind === "scan") return page.layer.value === "image" ? "image" : scanLayers[page.layer.value as Exclude<ScanLayer, "image">].name.toLowerCase();
+  return { global: "global temperature", zones: "the poles", events: "events" }[kind as "global"];
+}
+
+async function showTrack(load: () => Promise<ClimateTrack>, kind: TrackKind) {
+  const request = ++latestRequest;
+  await stopRecording();
+  halt();
+  page.play.disabled = true;
+  page.record.disabled = true;
+  page.download.hidden = true;
+  say(`Loading ${loadingName(kind)}…`);
+  lastLoad = () => void showTrack(load, kind);
   try {
-    const loaded = await loadTrack();
-    if (request !== latestRequest) return;
-    track = loaded;
-    const stepMakers = { global: globalSteps, zones: zoneSteps, place: placeSteps, events: eventSteps, scan: scanSteps };
-    steps = stepMakers[loaded.kind](loaded.points);
+    const loaded = await load();
+    if (request !== latestRequest) return false;
+    full = loaded;
+    fullSteps = stepsFor(loaded.kind, loaded.points);
+    if (loaded.place) place = loaded.place;
+    if (loaded.places) pair = loaded.places;
+    range = rangeKinds.includes(loaded.kind) ? clampRange(loaded.points, pendingRange) : null;
+    pendingRange = null;
     currentStep = 0;
-    page.title.textContent = loaded.title;
-    page.source.textContent = loaded.source;
-    chart.render(loaded);
+    applyRange();
     describeSound(loaded);
-    showFacts(loaded);
-    showReadout(0);
-    page.status.textContent = loaded.notice ?? (loaded.fromBackup ? "Using saved data." : "");
-    const instrumentAvailable = supportsLeadSound(loaded.kind);
-    page.instrumentPicker.disabled = !instrumentAvailable;
-    page.instrumentControl.setAttribute(
-      "title",
-      instrumentAvailable ? "Choose the lead instrument" : "This track uses its own fixed instruments",
-    );
-    page.headphonesHint.hidden = loaded.kind !== "zones";
+    say(loaded.notice ?? "");
+    page.instrument.disabled = !supportsLeadSound(loaded.kind);
+    page.instrumentControl.title = page.instrument.disabled ? "This view uses its own fixed voices" : "";
     page.pictureWords.hidden = !loaded.scan;
     page.pictureWords.textContent = loaded.scan?.description ?? "";
-    page.playButton.disabled = false;
-    page.recordButton.disabled = !engine.canRecord;
+    showLegend(loaded);
+    page.play.disabled = false;
+    page.record.disabled = !engine.canRecord;
+    markPresets();
+    remember();
+    return true;
   } catch (problem) {
-    if (request !== latestRequest) return;
+    if (request !== latestRequest) return false;
     console.error(problem);
-    page.status.textContent = friendlyError();
+    say(friendlyError(kind), lastLoad);
+    return false;
   }
 }
 
-function friendlyError() {
-  if (activeTab === "scan") return page.layerPicker.value === "image" ? "Couldn't read that image." : "Couldn't reach NASA GIBS.";
-  if (activeTab === "place") return "NASA POWER is unavailable. Choose a saved example city and try again.";
-  if (activeTab === "events") return "NASA EONET is unavailable. Reconnect and try again.";
-  return "NASA data couldn't load. Reconnect and try again.";
+function friendlyError(kind: TrackKind) {
+  if (kind === "scan") return page.layer.value === "image" ? "Couldn't read that image." : "NASA GIBS unavailable.";
+  if (kind === "place") return `${place.name} unavailable. Choose a saved city.`;
+  if (kind === "compare") return "One of these places is unavailable. Choose saved cities.";
+  if (kind === "events") return "Events unavailable.";
+  return "Data unavailable.";
 }
 
-function openTab(kind: TrackKind) {
-  activeTab = kind;
-  for (const [tabKind, tab] of Object.entries(page.tabs)) {
-    const selected = tabKind === kind;
-    tab.setAttribute("aria-selected", String(selected));
-    tab.tabIndex = selected ? 0 : -1;
+function applyRange() {
+  if (!full) return;
+  halt();
+  shown = slice(full, range);
+  const [start, end] = rangeKinds.includes(full.kind) && range ? span(full.points, range) : [0, full.points.length];
+  steps = fullSteps.slice(start, end);
+  currentStep = Math.min(currentStep, Math.max(0, steps.length - 1));
+  page.title.textContent = shown.title;
+  page.subtitle.textContent = subtitleFor(shown);
+  showBadge(shown);
+  chart.render(shown);
+  showFindings(shown);
+  showRangeControls();
+  page.scrub.max = String(Math.max(0, shown.points.length - 1));
+  showReadout(currentStep);
+}
+
+function subtitleFor(track: ClimateTrack) {
+  const period = range ? rangeLabel(range) : "";
+  switch (track.kind) {
+    case "global":
+      return `vs 1951–1980 · ${period}`;
+    case "zones":
+      return `vs 1951–1980 · ${period}`;
+    case "place":
+      return `${track.place?.country ?? `${track.place?.latitude.toFixed(2)}, ${track.place?.longitude.toFixed(2)}`} · ${period}`;
+    case "compare":
+      return `Monthly temperature · ${period}`;
+    case "events":
+      return `${track.points[0]?.label} – ${track.points.at(-1)?.label}`;
+    case "scan":
+      return track.scan?.layer === "image" ? "Colour and brightness" : "NASA GIBS";
   }
-  page.placeTools.hidden = kind !== "place";
-  page.headphonesHint.hidden = kind !== "zones";
-  page.scanTools.hidden = kind !== "scan";
-  page.pictureWords.hidden = kind !== "scan";
-  if (kind === "place") {
-    openPlace(placeFromUrl() ?? examplePlaces[0]);
+}
+
+function showBadge(track: ClimateTrack) {
+  const status = track.meta.status;
+  page.badge.hidden = track.scan?.layer === "image";
+  page.badge.textContent = status === "live" ? "Live" : status === "browser" ? "Saved in browser" : "Saved data";
+  page.badge.className = `badge ${status}`;
+}
+
+function showRangeControls() {
+  if (!full || !range || !rangeKinds.includes(full.kind)) {
+    page.range.hidden = true;
     return;
   }
-  if (kind === "scan") {
-    openScan();
-    return;
-  }
-  history.replaceState(null, "", kind === "global" ? location.pathname + location.search : `#track=${kind}`);
-  const loaders = { global: loadGlobal, zones: loadZones, events: loadEvents };
-  showTrack(loaders[kind as keyof typeof loaders]).then(() => {
-    if (kind === "events") refreshEvents();
-  });
+  page.range.hidden = false;
+  const years = yearsIn(full.points);
+  const options = (selected: number) => years.map((year) => `<option value="${year}"${year === selected ? " selected" : ""}>${year}</option>`).join("");
+  page.from.innerHTML = options(range.from);
+  page.to.innerHTML = options(range.to);
+  page.rangeReset.hidden = isFull(full.points, range);
 }
 
-function openScan() {
-  const layer = page.layerPicker.value as ScanLayer;
-  const usingImage = layer === "image";
-  page.picturePicker.hidden = !usingImage;
-  page.monthPicker.hidden = usingImage;
-  page.thenNowLabel.hidden = layer !== "air";
-  if (usingImage) {
-    history.replaceState(null, "", "#track=scan&layer=image");
-    const file = page.picturePicker.files?.[0];
-    if (file) showTrack(() => loadImageScan(file));
-    else page.status.textContent = "Choose an image";
-    return;
-  }
-  const info = scanLayers[layer];
-  page.monthPicker.min = info.first;
-  page.monthPicker.max = info.latest;
-  if (!page.monthPicker.value || page.monthPicker.value > info.latest || page.monthPicker.value < info.first) {
-    page.monthPicker.value = info.latest;
-  }
-  const month = page.monthPicker.value;
-  const thenVsNow = layer === "air" && page.thenNowToggle.checked;
-  history.replaceState(null, "", `#${new URLSearchParams({ track: "scan", layer, month, ...(thenVsNow ? { then: "1" } : {}) })}`);
-  showTrack(() => loadScan(layer, month, thenVsNow));
+function setRange(next: Partial<YearRange> | null) {
+  if (!full) return;
+  void stopRecording();
+  range = clampRange(full.points, next);
+  currentStep = 0;
+  applyRange();
+  remember();
 }
 
-async function refreshEvents() {
-  const request = latestRequest;
-  try {
-    const live = await loadLiveEvents();
-    if (request !== latestRequest || scheduled || engine.recording) return;
-    await showTrack(async () => live);
-  } catch (problem) {
-    console.error(problem);
-    if (request === latestRequest) page.status.textContent = "Using saved EONET data. Live update unavailable.";
+function showFindings(track: ClimateTrack) {
+  page.findings.innerHTML = "";
+  for (const finding of findingsFor(track)) {
+    const item = document.createElement("div");
+    const label = document.createElement("dt");
+    label.textContent = finding.label;
+    const value = document.createElement("dd");
+    value.textContent = finding.value;
+    item.append(label, value);
+    page.findings.append(item);
   }
 }
 
-function openPlace(place: Place) {
-  const address = new URLSearchParams({
-    lat: place.latitude.toFixed(3),
-    lon: place.longitude.toFixed(3),
-    name: place.name,
-    ...(place.country ? { country: place.country } : {}),
-    ...(place.slug ? { slug: place.slug } : {}),
-  });
-  history.replaceState(null, "", `#${address}`);
-  page.searchResults.innerHTML = "";
-  showTrack(() => loadPlace(place, examplePlaces));
+function showKey(keys: Key[]) {
+  page.key.innerHTML = "";
+  for (const entry of keys) {
+    const item = document.createElement("li");
+    item.style.color = entry.color;
+    const swatch = document.createElement("i");
+    swatch.className = entry.style;
+    const name = document.createElement("span");
+    name.textContent = entry.name;
+    name.style.color = "var(--text-2)";
+    item.append(swatch, name);
+    page.key.append(item);
+  }
+}
+chart.onKey = showKey;
+
+function showLegend(track: ClimateTrack) {
+  const legend = track.scan?.legend;
+  page.legend.hidden = !legend;
+  if (!legend) return;
+  page.legend.innerHTML = `<div class="bar" style="background:linear-gradient(90deg, ${legend.stops})"></div><div class="ends"><span>${legend.low}</span><span>NASA colormap</span><span>${legend.high}</span></div>`;
 }
 
-function placeFromUrl(): Place | null {
-  const address = new URLSearchParams(location.hash.slice(1));
-  const latitude = Number(address.get("lat"));
-  const longitude = Number(address.get("lon"));
-  if (!address.has("lat") || !Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
-  return {
-    latitude,
-    longitude,
-    name: address.get("name") ?? "Selected place",
-    country: address.get("country") ?? undefined,
-    slug: address.get("slug") ?? undefined,
+const sound: Record<TrackKind, [string, string][]> = {
+  global: [["One note", "one year"], ["Higher", "warmer"], ["Hiss", "more heat"], ["Low tone", "new decade"]],
+  zones: [["Left", "Arctic"], ["Centre", "Tropics"], ["Right", "Antarctic"], ["Higher", "warmer"]],
+  place: [["One beat", "one month"], ["Higher", "warmer"], ["More notes", "more rain"], ["Brighter", "more sunlight"], ["Low tone", "January"]],
+  compare: [["Left ear", "first city"], ["Right ear", "second city"], ["Higher", "warmer"], ["Low tone", "January"]],
+  events: [["One beat", "one day"], ["Crackle", "wildfire"], ["Drum", "storm or volcano"], ["Bell", "ice or snow"], ["Pluck", "other"], ["Left to right", "west to east"]],
+  scan: [["Sweep", "west to east"], ["Notes", "north to south"], ["Higher", "higher value"], ["Left to right", "west to east"]],
+};
+
+function describeSound(track: ClimateTrack) {
+  let rows = sound[track.kind];
+  if (track.kind === "compare" && track.places) rows = [["Left ear", track.places[0].name], ["Right ear", track.places[1].name], ...rows.slice(2)];
+  if (track.scan?.layer === "image") rows = [["Sweep", "left to right"], ["Higher", "warmer colour, brighter"], ["More notes", "more detail and colour"]];
+  page.mapping.innerHTML = "";
+  for (const [what, how] of rows) {
+    const item = document.createElement("li");
+    const name = document.createElement("b");
+    name.textContent = what;
+    item.append(name, `: ${how}`);
+    page.mapping.append(item);
+  }
+  const scaleNotes: Partial<Record<TrackKind, string>> = {
+    global: "Pitch uses one scale for the whole record, so a shorter range keeps the same notes.",
+    zones: "All three regions share one pitch scale, so the same note means the same anomaly.",
+    place: "Pitch, rain and brightness each use one scale for this city's full record. Rain is the month's average daily rate.",
+    compare: "Both cities share one pitch scale in °C, across the months they have in common.",
+    events: "Busy days are thinned to 16 sounds so they stay clear. The chart keeps the full count.",
+    scan: track.scan?.layer === "image" ? "This plays colour and brightness, not a measurement." : "Values are read back from the map's NASA colormap, so they are approximate.",
   };
+  page.scaleNote.textContent = scaleNotes[track.kind] ?? "";
 }
 
-function describeSound(shown: ClimateTrack) {
-  const guide: Record<TrackKind, [string, string][]> = {
-    global: [
-      ["Note", "one year"],
-      ["Pitch", "temperature"],
-      ["Hiss", "heat"],
-      ["Bass", "new decade"],
-    ],
-    zones: [
-      ["Left", "Arctic"],
-      ["Centre", "Tropics"],
-      ["Right", "Antarctic"],
-      ["Pitch", "temperature"],
-    ],
-    place: [
-      ["Beat", "one month"],
-      ["Pitch", "temperature"],
-      ["Notes", "rain"],
-      ["Brightness", "sunshine"],
-      ["Bass", "January"],
-    ],
-    events: [
-      ["Beat", "one day"],
-      ["Crackle", "wildfire"],
-      ["Drum", "storm · volcano"],
-      ["Bell", "ice · snow"],
-      ["Pluck", "other"],
-      ["Left ↔ right", "west ↔ east"],
-    ],
-    scan: [
-      ["Line", "sweeps west → east"],
-      ["Notes", "north → south"],
-      ["Pitch", "value"],
-      ["Left ↔ right", "west ↔ east"],
-      ["Brightness", "column average"],
-    ],
-  };
-  if (shown.scan?.layer === "image") {
-    guide.scan = [
-      ["Line", "sweeps left → right"],
-      ["Pitch", "warm colour · brightness"],
-      ["Notes", "detail · colour"],
-      ["Left ↔ right", "left ↔ right"],
-    ];
+function valueText(track: ClimateTrack, point: ClimatePoint) {
+  const one = (value: number | undefined, digits = 1) => (value == null || !Number.isFinite(value) ? "no data" : value.toFixed(digits));
+  const anomaly = (value: number | undefined) => (value == null || !Number.isFinite(value) ? "no data" : signed(value));
+  switch (track.kind) {
+    case "global":
+      return `${anomaly(point.temperature)} °C`;
+    case "zones":
+      return `Arctic ${anomaly(point.arctic)} · Tropics ${anomaly(point.tropics)} · Antarctic ${anomaly(point.antarctic)} °C`;
+    case "place":
+      return `${one(point.temperature)} °C · rain ${one(point.rainfall)} mm/day · sun ${one(point.sunshine)} MJ/m²/day`;
+    case "compare":
+      return `${track.places![0].name} ${one(point.temperature)} °C · ${track.places![1].name} ${one(point.other)} °C`;
+    case "events":
+      return `${point.temperature} ${point.temperature === 1 ? "event" : "events"}${point.headlines?.length ? ` · ${point.headlines.slice(0, 2).join(" · ")}` : ""}`;
+    case "scan":
+      return Number.isFinite(point.temperature) ? `${point.temperature.toFixed(track.scan!.digits)} ${track.scan!.units}` : "no data";
   }
-  page.soundGuide.innerHTML = guide[shown.kind].map(([what, how]) => `<li><b>${what}</b>: ${how}</li>`).join("");
-}
-
-function warming(points: ClimateTrack["points"], read: (point: ClimateTrack["points"][number]) => number | undefined) {
-  const early = points.filter((point) => point.position < 1910).map(read).filter(Number.isFinite) as number[];
-  const recent = points.slice(-10).map(read).filter(Number.isFinite) as number[];
-  return average(recent) - average(early);
-}
-
-function showFacts(shown: ClimateTrack) {
-  const findings: string[] = [];
-  const points = shown.points;
-  const scan = shown.scan;
-  if (scan) {
-    const shownValue = (value: number) => `${value.toFixed(scan.digits)} ${scan.units}`;
-    if (scan.layer === "image") {
-      findings.push(scan.description);
-    } else {
-      findings.push(`Warmest: <b>${shownValue(scan.warmest.value)}</b> near ${spotLabel(scan.warmest)}`);
-      findings.push(`Coolest: <b>${shownValue(scan.coolest.value)}</b> near ${spotLabel(scan.coolest)}`);
-      if (scan.difference != null) findings.push(`Average change: <b>${withSign(scan.difference)} ${scan.units}</b>`);
-      findings.push(`Date: <b>${scan.pictures.map((picture) => picture.date).join(" · ")}</b>`);
-    }
-    if (scan.layer === "plants") findings[0] = findings[0].replace("Warmest", "Greenest");
-    if (scan.layer === "plants") findings[1] = findings[1].replace("Coolest", "Barest");
-  } else if (shown.kind === "global") {
-    const warmest = points.reduce((best, point) => (point.temperature > best.temperature ? point : best));
-    const since1980 = points.filter((point) => point.position >= 1980);
-    const decadeTrend =
-      trendPerYear(since1980.map((point) => point.position), since1980.map((point) => point.temperature)) * 10;
-    findings.push(`<b>${withSign(warming(points, (point) => point.temperature))} °C</b> since 1880–1909`);
-    findings.push(`Warmest year: <b>${warmest.label}</b>`);
-    findings.push(`<b>${withSign(decadeTrend)} °C</b> per decade since 1980`);
-  } else if (shown.kind === "zones") {
-    const arctic = warming(points, (point) => point.arctic);
-    const tropics = warming(points, (point) => point.tropics);
-    const antarctic = warming(points, (point) => point.antarctic);
-    const planet = warming(points, (point) => point.temperature);
-    findings.push(`Arctic <b>${withSign(arctic)} °C</b>, <b>${(arctic / planet).toFixed(1)}×</b> the global rate`);
-    findings.push(`Tropics <b>${withSign(tropics)} °C</b> · Antarctic <b>${withSign(antarctic)} °C</b>`);
-  } else if (shown.kind === "events") {
-    const countOf = (category: string) => shown.eventTotals?.[category] ?? 0;
-    const busiest = points.reduce((best, point) => (point.temperature > best.temperature ? point : best));
-    findings.push(`Wildfires <b>${countOf("wildfires")}</b> · Storms <b>${countOf("severeStorms")}</b> · Floods <b>${countOf("floods")}</b> · Volcanoes <b>${countOf("volcanoes")}</b>`);
-    findings.push(`Busiest day: <b>${busiest.label}</b> (${busiest.temperature})`);
-  } else {
-    const years = yearlyAverages(points);
-    if (years.length >= 5) {
-      const decadeTrend = trendPerYear(years.map((entry) => entry.year), years.map((entry) => entry.temperature)) * 10;
-      const warmestYear = years.reduce((best, entry) => (entry.temperature > best.temperature ? entry : best));
-      findings.push(`<b>${withSign(decadeTrend)} °C</b> per decade`);
-      findings.push(`Warmest year: <b>${warmestYear.year}</b>`);
-    }
-    const wettest = points.reduce((best, point) => ((point.rainfall ?? -1) > (best.rainfall ?? -1) ? point : best));
-    const hottest = points.reduce((best, point) => (point.temperature > best.temperature ? point : best));
-    findings.push(`Hottest month: <b>${hottest.label}</b>`);
-    findings.push(`Wettest month: <b>${wettest.label}</b>`);
-  }
-  page.findings.innerHTML = findings.map((finding) => `<li>${finding}</li>`).join("");
 }
 
 function showReadout(stepNumber: number) {
-  if (!track) return;
-  currentStep = stepNumber;
-  const point = track.points[stepNumber];
+  if (!shown || !shown.points.length) return;
+  currentStep = Math.max(0, Math.min(shown.points.length - 1, stepNumber));
+  const point = shown.points[currentStep];
+  const value = valueText(shown, point);
   page.nowLabel.textContent = point.label;
-  page.nowValue.textContent =
-    track.scan
-      ? Number.isFinite(point.temperature)
-        ? `${point.temperature.toFixed(track.scan.digits)} ${track.scan.units}`
-        : "no data"
-      : track.kind === "global"
-      ? `${withSign(point.temperature)} °C`
-      : track.kind === "events"
-        ? `${point.temperature} events${point.headlines?.length ? ` · ${point.headlines.slice(0, 3).join(" · ")}` : ""}`
-        : track.kind === "zones"
-        ? `${withSign(point.arctic ?? NaN)} · ${withSign(point.tropics ?? NaN)} · ${withSign(point.antarctic ?? NaN)} °C`
-        : `${oneDecimal(point.temperature)} °C · ${oneDecimal(point.rainfall)} mm/day · ${oneDecimal(point.sunshine)} MJ/m²/day`;
-  chart.movePlayhead(stepNumber);
+  page.nowValue.textContent = value;
+  page.scrub.value = String(currentStep);
+  page.scrub.setAttribute("aria-valuetext", `${point.label}, ${value}`);
+  page.scrub.style.setProperty("--fill", `${(currentStep / Math.max(1, shown.points.length - 1)) * 100}%`);
+  chart.movePlayhead(currentStep);
+  tourCaptionAt(currentStep);
 }
 
-const wave = element<HTMLCanvasElement>("wave");
 let waveFrame = 0;
-
 function drawWave() {
-  const pen = wave.getContext("2d");
+  const pen = page.wave.getContext("2d");
   if (!pen) return;
   const ratio = window.devicePixelRatio || 1;
-  wave.width = wave.clientWidth * ratio;
-  wave.height = wave.clientHeight * ratio;
-  pen.clearRect(0, 0, wave.width, wave.height);
+  const width = page.wave.clientWidth * ratio;
+  const height = page.wave.clientHeight * ratio;
+  if (page.wave.width !== width) page.wave.width = width;
+  if (page.wave.height !== height) page.wave.height = height;
+  pen.clearRect(0, 0, width, height);
+  if (!engine.playing || calm.matches) return;
   const samples = engine.wave?.getValue();
-  pen.lineWidth = 2 * ratio;
-  pen.strokeStyle = "#3ddc84";
-  pen.shadowColor = "#3ddc84";
-  pen.shadowBlur = 8 * ratio;
+  if (!samples) return;
+  pen.lineWidth = 1.5 * ratio;
+  pen.strokeStyle = "rgba(88, 214, 162, 0.7)";
   pen.beginPath();
-  const count = samples?.length ?? 2;
-  for (let at = 0; at < count; at++) {
-    const x = (at / (count - 1)) * wave.width;
-    const y = wave.height / 2 - (samples ? samples[at] : 0) * wave.height * 1.6;
+  for (let at = 0; at < samples.length; at++) {
+    const x = (at / (samples.length - 1)) * width;
+    const y = height / 2 - samples[at] * height * 1.2;
     if (at) pen.lineTo(x, y);
     else pen.moveTo(x, y);
   }
   pen.stroke();
-  if (engine.playing) waveFrame = requestAnimationFrame(drawWave);
-}
-
-function showPlaying(isPlaying: boolean) {
-  page.playButton.classList.toggle("playing", isPlaying);
-  cancelAnimationFrame(waveFrame);
-  if (isPlaying) waveFrame = requestAnimationFrame(drawWave);
-  else requestAnimationFrame(drawWave);
-  page.playButton.textContent = isPlaying ? "⏸" : "▶";
-  page.playButton.setAttribute("aria-label", isPlaying ? "Pause" : "Play");
+  waveFrame = requestAnimationFrame(drawWave);
 }
 
 async function prepareAudio() {
   try {
     await engine.init();
-    engine.setVolume(Number(page.volumeSlider.value));
-    engine.useLeadSound(page.instrumentPicker.value as LeadSound);
+    engine.setVolume(Number(page.volume.value));
+    engine.useLeadSound(page.instrument.value as LeadSound);
+    engine.narrate = page.narrate.checked && !tour.active;
     return true;
   } catch (problem) {
     console.error(problem);
-    page.status.textContent = "Audio blocked. Tap play again.";
+    say("Sound is blocked. Tap play again.");
     return false;
   }
 }
 
+function startFrom(stepNumber: number) {
+  engine.load(steps, secondsPerStep(), stepNumber);
+  scheduled = true;
+  engine.play();
+  setPlayIcon(true);
+}
+
 async function togglePlay() {
-  if (!track || !(await prepareAudio())) return;
-  page.firstListenHint.hidden = true;
+  if (!shown || page.play.disabled || !(await prepareAudio())) return;
+  page.hint.textContent = "Use ← → to step through time.";
   if (engine.playing) {
     engine.pause();
-    showPlaying(false);
-    await stopRecordingIfNeeded();
+    setPlayIcon(false);
+    await stopRecording();
     return;
   }
   if (!scheduled) {
-    engine.load(steps, secondsPerStep(), currentStep >= steps.length - 1 ? 0 : currentStep);
-    scheduled = true;
-  }
-  engine.play();
-  showPlaying(true);
-}
-
-async function recordFromStart() {
-  if (!track || !(await prepareAudio())) return;
-  page.firstListenHint.hidden = true;
-  if (engine.recording) {
-    engine.pause();
-    showPlaying(false);
-    await stopRecordingIfNeeded();
+    startFrom(currentStep >= steps.length - 1 ? 0 : currentStep);
     return;
   }
-  page.downloadLink.hidden = true;
+  engine.play();
+  setPlayIcon(true);
+}
+
+async function toggleRecording() {
+  if (!shown || !(await prepareAudio())) return;
+  if (engine.recording) {
+    engine.pause();
+    setPlayIcon(false);
+    await stopRecording();
+    return;
+  }
+  page.download.hidden = true;
   engine.load(steps, secondsPerStep(), 0);
   scheduled = true;
   if (!engine.startRecording()) {
-    page.status.textContent = "Recording not supported.";
+    say("Recording isn't supported here.");
     return;
   }
-  page.recordButton.textContent = "⏹ Stop";
-  page.status.textContent = "Recording…";
+  page.record.classList.add("on");
+  page.record.innerHTML = icon("stop");
+  page.record.setAttribute("aria-label", "Stop recording");
+  say("Recording one pass…");
   engine.play();
-  showPlaying(true);
+  setPlayIcon(true);
 }
 
-async function stopRecordingIfNeeded() {
+async function stopRecording() {
   if (!engine.recording) return;
-  page.recordButton.textContent = "⏺ Record";
+  page.record.classList.remove("on");
+  page.record.innerHTML = icon("record");
+  page.record.setAttribute("aria-label", "Record one pass");
   const recording = await engine.finishRecording();
-  if (!recording || !track) return;
-  if (page.downloadLink.href) URL.revokeObjectURL(page.downloadLink.href);
-  const fileName = track.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-  page.downloadLink.href = URL.createObjectURL(recording);
-  page.downloadLink.download = `earth-in-sound-${fileName}.webm`;
-  page.downloadLink.hidden = false;
-  page.status.textContent = "";
+  if (!recording || !shown) return;
+  if (page.download.href) URL.revokeObjectURL(page.download.href);
+  page.download.href = URL.createObjectURL(recording);
+  page.download.download = `${fileStem(shown)}.webm`;
+  page.download.hidden = false;
+  say("Recorded. Press Save to keep it.");
 }
 
 function jumpTo(stepNumber: number) {
-  if (!track) return;
-  const safeStep = Math.max(0, Math.min(track.points.length - 1, stepNumber));
-  if (scheduled) engine.jumpTo(safeStep);
-  else showReadout(safeStep);
+  if (!shown) return;
+  const safe = Math.max(0, Math.min(shown.points.length - 1, stepNumber));
+  if (scheduled) engine.jumpTo(safe);
+  else showReadout(safe);
 }
 
 engine.onStep = showReadout;
 engine.onEnd = () => {
-  if (shouldLoopPlayback(page.loopToggle.checked, engine.recording)) {
-    engine.load(steps, secondsPerStep(), 0);
-    engine.play();
+  if (tour.active) {
+    setPlayIcon(false);
+    scheduled = false;
+    window.setTimeout(() => tour.active && nextChapter(), 1400);
     return;
   }
-  showPlaying(false);
+  if (shouldLoopPlayback(page.loop.checked, engine.recording)) {
+    startFrom(0);
+    return;
+  }
+  setPlayIcon(false);
   scheduled = false;
-  page.status.textContent = "";
-  stopRecordingIfNeeded();
+  void stopRecording();
 };
 chart.onJump = jumpTo;
 
-page.playButton.addEventListener("click", togglePlay);
-page.recordButton.addEventListener("click", recordFromStart);
-page.restartButton.addEventListener("click", () => jumpTo(0));
-page.instrumentPicker.addEventListener("change", () => engine.useLeadSound(page.instrumentPicker.value as LeadSound));
-page.narrateToggle.addEventListener("change", () => (engine.narrate = page.narrateToggle.checked));
-page.volumeSlider.addEventListener("input", () => engine.setVolume(Number(page.volumeSlider.value)));
-page.speedPicker.addEventListener("change", () => {
+function selectTab(kind: TrackKind) {
+  view = kind;
+  for (const [tabKind, tab] of Object.entries(page.tabs)) {
+    const selected = tabKind === kind;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+  page.tabs[kind].scrollIntoView({ block: "nearest", inline: "nearest" });
+  page.placeTools.hidden = kind !== "place";
+  page.compareTools.hidden = kind !== "compare";
+  page.scanTools.hidden = kind !== "scan";
+  if (kind !== "scan") {
+    page.legend.hidden = true;
+    page.pictureWords.hidden = true;
+  }
+}
+
+function openView(kind: TrackKind): Promise<boolean> {
+  selectTab(kind);
+  if (kind === "place") return showTrack(() => loadPlace(place, presets), "place");
+  if (kind === "compare") {
+    fillCompare();
+    return showTrack(() => loadComparison(pair[0], pair[1], presets), "compare");
+  }
+  if (kind === "scan") return openScan();
+  if (kind === "events") {
+    return showTrack(loadEvents, "events").then((ok) => {
+      if (ok) void refreshEvents();
+      return ok;
+    });
+  }
+  return showTrack(kind === "global" ? loadGlobal : loadZones, kind);
+}
+
+function openScan(): Promise<boolean> {
+  const layer = page.layer.value as ScanLayer;
+  const usingImage = layer === "image";
+  page.pictureLabel.hidden = !usingImage;
+  page.month.hidden = usingImage;
+  page.thenNowLabel.hidden = layer !== "air";
+  if (usingImage) {
+    const file = page.picture.files?.[0];
+    if (file) return showTrack(() => loadImageScan(file), "scan");
+    latestRequest++;
+    halt();
+    full = shown = null;
+    page.play.disabled = true;
+    page.title.textContent = "Your image";
+    page.subtitle.textContent = "Colour and brightness, not a measurement";
+    page.badge.hidden = true;
+    page.findings.innerHTML = "";
+    page.range.hidden = true;
+    page.legend.hidden = true;
+    page.pictureWords.hidden = true;
+    chart.render({ kind: "events", title: "", source: "", points: [], meta: { dataset: "", link: "", units: "", coverage: "", status: "saved", limit: "" } });
+    say("Choose an image");
+    remember();
+    return Promise.resolve(false);
+  }
+  const info = scanLayers[layer];
+  page.month.min = info.first;
+  page.month.max = info.latest;
+  if (!page.month.value || page.month.value > info.latest || page.month.value < info.first) page.month.value = info.latest;
+  const month = page.month.value;
+  const thenVsNow = layer === "air" && page.thenNow.checked;
+  return showTrack(() => loadScan(layer, month, thenVsNow), "scan");
+}
+
+async function refreshEvents() {
+  const request = latestRequest;
+  if (!navigator.onLine) return;
+  say("Checking live events…");
+  try {
+    const live = await loadLiveEvents();
+    if (request !== latestRequest || scheduled || engine.recording || view !== "events") return;
+    await showTrack(async () => live, "events");
+  } catch {
+    if (request === latestRequest && view === "events") say("Live events unavailable. Playing saved data.");
+    return;
+  }
+}
+
+function currentSetup(): Setup {
+  const setup: Setup = { view, sound: page.instrument.value as LeadSound, speed: Number(page.speed.value) };
+  if (view === "place") setup.city = place;
+  if (view === "compare") [setup.city, setup.city2] = pair;
+  if (full && range && rangeKinds.includes(full.kind) && !isFull(full.points, range)) {
+    setup.from = range.from;
+    setup.to = range.to;
+  }
+  if (view === "scan" && page.layer.value !== "image") {
+    setup.layer = page.layer.value as Setup["layer"];
+    setup.month = page.month.value;
+    setup.then = page.thenNow.checked;
+  }
+  return setup;
+}
+
+function remember() {
+  const setup = currentSetup();
+  if (sharesLocation(setup)) {
+    delete setup.city;
+    delete setup.city2;
+  }
+  const hash = buildSetup(setup);
+  history.replaceState(null, "", hash === "#view=planet" ? location.pathname + location.search : hash);
+}
+
+async function applySetup(setup: Setup) {
+  if (setup.speed) page.speed.value = String(setup.speed);
+  if (setup.sound) {
+    page.instrument.value = setup.sound;
+    engine.useLeadSound(setup.sound);
+  }
+  if (setup.city) {
+    addKnown(setup.city);
+    if (setup.view === "place") place = setup.city;
+    if (setup.view === "compare") pair = [setup.city, setup.city2 ? addKnown(setup.city2) : pair[1]];
+  }
+  if (setup.layer) page.layer.value = setup.layer;
+  if (setup.month) page.month.value = setup.month;
+  page.thenNow.checked = Boolean(setup.then);
+  pendingRange = setup.from != null && setup.to != null ? { from: setup.from, to: setup.to } : null;
+  return openView(setup.view);
+}
+
+function addKnown(target: Place) {
+  const found = known.find((entry) => (entry.slug && entry.slug === target.slug) || (Math.abs(entry.latitude - target.latitude) < 0.01 && Math.abs(entry.longitude - target.longitude) < 0.01));
+  if (found) return found;
+  known.push(target);
+  return target;
+}
+
+function fillCompare() {
+  for (const [select, chosen] of [[page.cityA, pair[0]], [page.cityB, pair[1]]] as const) {
+    select.innerHTML = "";
+    known.forEach((entry, order) => {
+      const option = new Option(entry.slug ? entry.name : placeName(entry), String(order));
+      option.selected = entry === addKnown(chosen);
+      select.add(option);
+    });
+  }
+}
+
+function markPresets() {
+  page.presetList.querySelectorAll<HTMLButtonElement>("button").forEach((button) => {
+    button.setAttribute("aria-pressed", String(view === "place" && button.dataset.slug === place.slug));
+  });
+}
+
+function placeChip(target: Place) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = target.slug ? target.name : placeName(target);
+  if (target.slug) button.dataset.slug = target.slug;
+  button.addEventListener("click", () => {
+    place = addKnown(target);
+    page.results.innerHTML = "";
+    void showTrack(() => loadPlace(place, presets), "place");
+  });
+  const item = document.createElement("li");
+  item.append(button);
+  return item;
+}
+
+const tour = {
+  active: false,
+  chapter: 0,
+  captions: [] as { step: number; text: string }[],
+  shownCaption: -1,
+};
+
+interface Chapter {
+  setup: () => Setup;
+  range?: (track: ClimateTrack) => YearRange;
+  captions: (track: ClimateTrack) => { step: number; text: string }[];
+}
+
+const fromYear = (track: ClimateTrack, year: number) => Math.max(0, track.points.findIndex((point) => point.position >= year));
+
+const chapters: Chapter[] = [
+  {
+    setup: () => ({ view: "global", speed: 4 }),
+    captions: (track) => {
+      const recent = findingsFor({ ...track, points: track.points.slice(fromYear(track, 1980)) });
+      const all = findingsFor(track);
+      return [
+        { step: 0, text: "Each note is one year. Higher means warmer than 1951–1980." },
+        { step: fromYear(track, 1980), text: `From 1980: ${recent.find((item) => item.label === "Trend")?.value ?? ""}.` },
+        { step: track.points.length - 1, text: `Warmest year: ${all.find((item) => item.label === "Warmest year")?.value ?? ""}.` },
+      ];
+    },
+  },
+  {
+    setup: () => ({ view: "zones", speed: 4 }),
+    captions: (track) => {
+      const recent = findingsFor({ ...track, points: track.points.slice(fromYear(track, 1980)) });
+      const fastest = recent.find((item) => item.label === "Fastest warming")?.value ?? "";
+      return [
+        { step: 0, text: "Arctic on the left, Tropics in the middle, Antarctic on the right." },
+        { step: fromYear(track, 1980), text: `Since 1980, fastest warming: ${fastest}.` },
+      ];
+    },
+  },
+  {
+    setup: () => ({ view: "place", city: dhaka, speed: 1 }),
+    range: (track) => {
+      const years = yearsIn(track.points).filter((year) => track.points.filter((point) => Math.floor(point.position) === year).length === 12);
+      const last = years.at(-1) ?? Math.floor(track.points.at(-1)!.position);
+      return { from: last - 2, to: last };
+    },
+    captions: (track) => {
+      const peak = findingsFor(track).find((item) => item.label === "Rain peaks")?.value ?? "";
+      const first = peak.split(/ & |, /)[0];
+      const at = track.points.findIndex((point) => point.label.startsWith(first.slice(0, 3)));
+      return [
+        { step: 0, text: `${track.place?.name ?? "Dhaka"}, month by month. More notes mean more rain.` },
+        ...(peak && at >= 0 ? [{ step: at, text: `Rain peaks in ${peak}.` }] : []),
+      ];
+    },
+  },
+];
+
+function tourCaptionAt(stepNumber: number) {
+  if (!tour.active) return;
+  let latest = -1;
+  tour.captions.forEach((caption, order) => caption.step <= stepNumber && (latest = order));
+  if (latest < 0 || latest === tour.shownCaption) return;
+  tour.shownCaption = latest;
+  const text = tour.captions[latest].text;
+  page.tourCaption.textContent = text;
+  if (page.narrate.checked) speakAloud(text);
+}
+
+async function playChapter(order: number) {
+  tour.chapter = order;
+  tour.shownCaption = -1;
+  tour.captions = [];
+  page.tourStep.textContent = `${order + 1} / ${chapters.length}`;
+  page.tourCaption.textContent = "…";
+  const chapter = chapters[order];
+  const ok = await applySetup(chapter.setup());
+  if (!tour.active || tour.chapter !== order) return;
+  if (!ok || !shown || !full) {
+    page.tourCaption.textContent = "This part couldn't load. Skip to go on.";
+    return;
+  }
+  if (chapter.range) setRange(chapter.range(full));
+  tour.captions = chapter.captions(shown);
+  if (!(await prepareAudio())) return;
+  engine.narrate = false;
+  startFrom(0);
+  tourCaptionAt(0);
+}
+
+function nextChapter() {
+  if (tour.chapter + 1 < chapters.length) {
+    void playChapter(tour.chapter + 1);
+    return;
+  }
+  halt();
+  tour.captions = [];
+  page.tourStep.textContent = "Done";
+  page.tourCaption.textContent = "Now pick any view and press play.";
+  if (page.narrate.checked) speakAloud(page.tourCaption.textContent);
+}
+
+async function startTour() {
+  if (!(await prepareAudio())) return;
+  tour.active = true;
+  page.tour.hidden = false;
+  page.tour.scrollIntoView({ block: "nearest" });
+  void playChapter(0);
+}
+
+function leaveTour() {
+  tour.active = false;
+  tour.captions = [];
+  page.tour.hidden = true;
+  window.speechSynthesis?.cancel();
+  engine.narrate = page.narrate.checked;
+  halt();
+  page.play.focus();
+}
+
+$("tour-start").addEventListener("click", startTour);
+$("tour-skip").addEventListener("click", () => nextChapter());
+$("tour-replay").addEventListener("click", () => void playChapter(page.tourStep.textContent === "Done" ? 0 : tour.chapter));
+$("tour-leave").addEventListener("click", leaveTour);
+
+function openData() {
+  if (!shown) return;
+  const meta = shown.meta;
+  const rows: [string, string | HTMLElement][] = [["Dataset", meta.dataset]];
+  if (meta.link) {
+    const link = document.createElement("a");
+    link.href = meta.link;
+    link.target = "_blank";
+    link.rel = "noopener";
+    link.textContent = meta.link.replace(/^https:\/\//, "");
+    rows.push(["Source", link]);
+  }
+  rows.push(["Units", meta.units]);
+  if (meta.baseline) rows.push(["Baseline", meta.baseline]);
+  rows.push(["Coverage", meta.coverage]);
+  if (range && full && !isFull(full.points, range)) rows.push(["Selected", rangeLabel(range)]);
+  rows.push(["Retrieved", meta.retrieved ?? "Unknown"]);
+  rows.push(["Status", meta.status === "live" ? "Live from NASA" : meta.status === "browser" ? "Saved in this browser" : "Saved copy in the app"]);
+  rows.push(["Limits", meta.limit]);
+  page.dataList.innerHTML = "";
+  for (const [label, value] of rows) {
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const detail = document.createElement("dd");
+    detail.append(value);
+    page.dataList.append(term, detail);
+  }
+  exportUrls.forEach((url) => URL.revokeObjectURL(url));
+  const csvUrl = URL.createObjectURL(new Blob([toCsv(shown)], { type: "text/csv" }));
+  const notesUrl = URL.createObjectURL(new Blob([notes(shown, range && full && !isFull(full.points, range) ? rangeLabel(range) : "")], { type: "text/plain" }));
+  exportUrls = [csvUrl, notesUrl];
+  page.csv.href = csvUrl;
+  page.csv.download = `${fileStem(shown)}.csv`;
+  page.notes.href = notesUrl;
+  page.notes.download = `${fileStem(shown)}-notes.txt`;
+  page.data.showModal();
+}
+
+function openShare() {
+  const setup = currentSetup();
+  page.shareLink.value = `${location.origin}${location.pathname}${buildSetup(setup)}`;
+  page.shareWarning.hidden = !sharesLocation(setup);
+  page.copied.textContent = "";
+  page.share.showModal();
+  page.shareLink.select();
+}
+
+page.copy.addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(page.shareLink.value);
+    page.copied.textContent = "Copied";
+  } catch {
+    page.shareLink.select();
+    page.copied.textContent = "Press Ctrl+C or ⌘C to copy";
+  }
+});
+
+$("open-data").addEventListener("click", openData);
+$("open-share").addEventListener("click", openShare);
+$("open-about").addEventListener("click", () => page.about.showModal());
+for (const dialog of [page.about, page.data, page.share]) {
+  dialog.querySelector("[data-close]")?.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("click", (event) => event.target === dialog && dialog.close());
+}
+
+page.play.addEventListener("click", togglePlay);
+page.record.addEventListener("click", toggleRecording);
+page.restart.addEventListener("click", () => {
+  if (scheduled) engine.jumpTo(0);
+  else showReadout(0);
+});
+page.scrub.addEventListener("input", () => jumpTo(Number(page.scrub.value)));
+page.instrument.addEventListener("change", () => {
+  engine.useLeadSound(page.instrument.value as LeadSound);
+  remember();
+});
+page.narrate.addEventListener("change", () => {
+  engine.narrate = page.narrate.checked && !tour.active;
+  if (!page.narrate.checked) window.speechSynthesis?.cancel();
+});
+page.volume.addEventListener("input", () => engine.setVolume(Number(page.volume.value)));
+page.speed.addEventListener("change", () => {
+  remember();
   if (!scheduled) return;
   const wasPlaying = engine.playing;
   engine.load(steps, secondsPerStep(), engine.currentStep);
   if (wasPlaying) engine.play();
 });
-for (const [kind, tab] of Object.entries(page.tabs)) {
-  tab.addEventListener("click", () => openTab(kind as TrackKind));
+page.more.addEventListener("click", () => {
+  const open = page.extra.hidden;
+  page.extra.hidden = !open;
+  page.more.setAttribute("aria-expanded", String(open));
+});
+page.from.addEventListener("change", () => setRange({ from: Number(page.from.value), to: Math.max(Number(page.from.value), Number(page.to.value)) }));
+page.to.addEventListener("change", () => setRange({ from: Math.min(Number(page.from.value), Number(page.to.value)), to: Number(page.to.value) }));
+page.rangeReset.addEventListener("click", () => setRange(null));
+
+for (const [kind, tab] of Object.entries(page.tabs) as [TrackKind, HTMLButtonElement][]) {
+  tab.addEventListener("click", () => {
+    if (tour.active) leaveTour();
+    if (kind !== view || !full) void openView(kind);
+  });
   tab.addEventListener("keydown", (event) => {
-    const destination = tabAfterKey(kind as TrackKind, event.key);
+    const destination = tabAfterKey(kind, event.key);
     if (!destination) return;
     event.preventDefault();
     page.tabs[destination].focus();
-    openTab(destination);
+    if (tour.active) leaveTour();
+    void openView(destination);
   });
 }
 
 document.addEventListener("keydown", (event) => {
-  const typingTarget = (event.target as HTMLElement).tagName;
-  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(typingTarget)) return;
-  if (event.code === "Space" && typingTarget !== "BUTTON" && typingTarget !== "A") {
+  if (document.querySelector("dialog[open]")) return;
+  const target = event.target as HTMLElement;
+  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON", "A", "SUMMARY"].includes(target.tagName)) return;
+  if (event.code === "Space") {
     event.preventDefault();
-    togglePlay();
+    void togglePlay();
   } else if (event.key === "ArrowRight") jumpTo(currentStep + (event.shiftKey ? 10 : 1));
   else if (event.key === "ArrowLeft") jumpTo(currentStep - (event.shiftKey ? 10 : 1));
 });
 
-const placeChip = (place: Place) => {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = place.country ? `${place.name}, ${place.country}` : place.name;
-  button.addEventListener("click", () => openPlace(place));
-  const item = document.createElement("li");
-  item.appendChild(button);
-  return item;
-};
+page.presetList.append(...presets.map(placeChip));
 
-page.exampleList.append(...examplePlaces.map(placeChip));
-
-page.searchForm.addEventListener("submit", async (event) => {
+page.search.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const query = page.searchBox.value.trim();
+  const query = page.query.value.trim();
   if (!query) return;
-  page.searchResults.innerHTML = "<li class='muted'>Searching…</li>";
+  if (!navigator.onLine) {
+    page.results.innerHTML = "<li class='muted'>Offline. Choose a saved city.</li>";
+    return;
+  }
+  page.results.innerHTML = "<li class='muted'>Searching…</li>";
   try {
     const found = await searchPlaces(query);
-    page.searchResults.innerHTML = found.length ? "" : "<li class='muted'>No results</li>";
-    page.searchResults.append(...found.map(placeChip));
+    page.results.innerHTML = found.length ? "" : "<li class='muted'>No match. Try another spelling.</li>";
+    page.results.append(...found.map(placeChip));
   } catch {
-    page.searchResults.innerHTML = "<li class='muted'>Search unavailable. Choose a saved city below.</li>";
+    page.results.innerHTML = "<li class='muted'>Search unavailable. Choose a saved city.</li>";
   }
 });
 
-page.nearMeButton.addEventListener("click", () => {
-  if (!navigator.geolocation) return;
-  page.status.textContent = "Locating…";
+page.geo.addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    say("Location isn't available here.");
+    return;
+  }
+  say("Finding you…");
   navigator.geolocation.getCurrentPosition(
-    (position) => openPlace({ name: "My location", latitude: position.coords.latitude, longitude: position.coords.longitude }),
-    () => (page.status.textContent = "Location denied"),
+    (position) => {
+      place = addKnown({ name: "My location", latitude: Number(position.coords.latitude.toFixed(2)), longitude: Number(position.coords.longitude.toFixed(2)) });
+      void showTrack(() => loadPlace(place, presets), "place");
+    },
+    () => say("Location off. Choose a city."),
+    { timeout: 10000, maximumAge: 600000 },
   );
 });
 
+page.cityA.addEventListener("change", () => {
+  pair = [known[Number(page.cityA.value)], pair[1]];
+  void showTrack(() => loadComparison(pair[0], pair[1], presets), "compare");
+});
+page.cityB.addEventListener("change", () => {
+  pair = [pair[0], known[Number(page.cityB.value)]];
+  void showTrack(() => loadComparison(pair[0], pair[1], presets), "compare");
+});
+
+page.layer.addEventListener("change", () => void openScan());
+page.month.addEventListener("change", () => page.month.value && void openScan());
+page.thenNow.addEventListener("change", () => void openScan());
+page.picture.addEventListener("change", () => void openScan());
+
 function showConnection() {
   page.connection.hidden = navigator.onLine;
-  if (!navigator.onLine && activeTab === "place") {
-    page.status.textContent = "Offline: search needs a connection. Saved example cities still work.";
-  }
 }
 window.addEventListener("online", showConnection);
 window.addEventListener("offline", showConnection);
@@ -561,38 +963,36 @@ showConnection();
 
 window.addEventListener("error", (event) => {
   console.error(event.error ?? event.message);
-  page.status.textContent = "Something went wrong. Try again.";
+  say("Something went wrong.", lastLoad ?? undefined);
 });
 window.addEventListener("unhandledrejection", (event) => {
   console.error(event.reason);
-  page.status.textContent = "Network issue. Using saved data.";
+  event.preventDefault();
 });
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && engine.playing) waveFrame = requestAnimationFrame(drawWave);
+});
+
+if (!engine.canRecord) page.recordNote.hidden = false;
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}offline-worker.js`).catch((problem) => console.error(problem));
 }
 
-const opening = new URLSearchParams(location.hash.slice(1));
-const requestedTrack = opening.get("track");
-if (requestedTrack === "scan") {
-  const layer = opening.get("layer");
-  if (layer && [...page.layerPicker.options].some((option) => option.value === layer)) page.layerPicker.value = layer;
-  if (opening.get("month")) page.monthPicker.value = opening.get("month")!;
-  page.thenNowToggle.checked = opening.get("then") === "1";
-}
+fillIcons();
+setPlayIcon(false);
 latestMonths().then((months) => {
   for (const [layer, month] of Object.entries(months)) {
     if (month && layer in scanLayers) scanLayers[layer as keyof typeof scanLayers].latest = month;
   }
 });
-page.layerPicker.addEventListener("change", () => openScan());
-page.monthPicker.addEventListener("change", () => page.monthPicker.value && openScan());
-page.thenNowToggle.addEventListener("change", () => openScan());
-page.picturePicker.addEventListener("change", () => openScan());
-openTab(
-  placeFromUrl()
-    ? "place"
-    : requestedTrack === "zones" || requestedTrack === "events" || requestedTrack === "scan"
-      ? requestedTrack
-      : "global",
-);
+
+window.addEventListener("hashchange", () => {
+  const setup = parseSetup(location.hash, presets);
+  if (!setup) return;
+  if (tour.active) leaveTour();
+  void applySetup(setup);
+});
+
+const opening = parseSetup(location.hash, presets);
+void applySetup(opening ?? { view: "global" });

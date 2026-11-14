@@ -1,53 +1,86 @@
-# Earth in Sound
+# Earth in Sound: submission drafts
 
-NASA Space Apps Challenge 2026 · https://googoomuck44.github.io/earth-in-sound/
+Editable drafts for the Space Apps project page. Items in brackets need the team. Check every rule and deadline against the official site and our Local Lead before submitting.
 
-## Problem
+Live: https://googoomuck44.github.io/earth-in-sound/ · Code: https://github.com/GooGooMuck44/earth-in-sound
 
-Climate data mostly lives in charts and tables. Many people skim past a line graph, and people who are blind or have low vision often can't use it at all. A warming of "1.3 °C" is hard to feel.
+Challenge: **The Earth Information Jukebox** [CONFIRM OFFICIAL CHALLENGE: check it matches the challenge we registered on Space Apps Connect]
 
-## Solution
+## High-level summary
 
-Earth in Sound turns NASA climate records into music in the browser. Warmer means higher and brighter. You can listen, watch a playhead move across the chart, jump around with the keyboard, and record the result as a song to share. It runs with no account, no API keys and no backend, and keeps working offline.
+Earth in Sound is a small listening instrument for our planet. It turns NASA Earth data into sound you can explore in a browser: 146 years of global temperature, the Arctic against the Tropics, the seasons of your own city, two cities side by side, natural events NASA is tracking, and satellite maps scanned from west to east. A chart, a readout and a Data panel show the same numbers, so it works with or without sound. No account, no backend, and it keeps working offline.
 
-## What it shows
+## Problem and audience
 
-- **Planet since 1880:** one note per year of global temperature. The last ten years were about 1.3 °C warmer than 1880–1909, and you hear the tune climb.
-- **Poles vs Tropics:** the Arctic in your left ear, the Tropics in the centre and the Antarctic in your right ear. The Arctic has warmed about 3.4 °C, roughly 2.7× faster than the planet as a whole.
-- **My Place:** any city on Earth, month by month since 2001. Temperature sets the pitch, rain adds notes and sunshine makes the sound brighter.
-- **Scan the Planet:** a scan line sweeps west to east across a NASA satellite map and plays what it crosses. Each column has 8 bands from north to south, value sets the pitch, and longitude sets left or right. Choose air temperature (back to 1980), sea surface temperature or plants, and pick a month. "1981 vs now" plays August 1981 and then August 2026. The planet averages +0.89 °C warmer. "Your image" scans any picture, such as a frame from the Earth Information Center: warm colours and bright pixels play higher, and detailed or colourful areas play more notes. A short description of the picture is read by screen readers.
-- **Earth right now:** NASA's natural-event feed for the last 60 days, one beat per day. Wildfires crackle, storms and volcanoes drum, and ice and snow ring a bell, placed left to right from west to east. The saved copy holds about 1,770 events, most of them wildfires.
+Climate information mostly arrives as charts. Many people skim past them, and people who are blind or have low vision often can't use them at all. Large numbers such as "1.2 °C" are hard to feel or connect to a place you know.
 
-## NASA data used
+Intended audiences (not yet tested with them): students, teachers, curious listeners, people who find climate charts hard to approach, and people who benefit from more than one way to explore information, including blind and low-vision listeners.
 
-| Dataset | What we use |
-| --- | --- |
-| NASA GISS GISTEMP v4, global | Annual global temperature anomaly vs 1951–1980 |
-| NASA GISS GISTEMP v4, zonal | Annual means for 64°N–90°N, 24°S–24°N and 90°S–64°S |
-| NASA POWER (Langley) | Monthly `T2M` (air temperature at 2 m), `PRECTOTCORR` (rain) and `ALLSKY_SFC_SW_DWN` (sunshine) |
-| NASA EONET v3 | Natural events from the last 60 days: wildfires, storms, volcanoes, floods, ice |
-| NASA GIBS (Global Imagery Browse Services) | WMS maps `MERRA2_2m_Air_Temperature_Assimilated_Monthly`, `GHRSST_L4_MUR_Sea_Surface_Temperature` and `MODIS_Terra_L3_NDVI_Monthly`, turned into values with GIBS colormaps. API: https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api |
+## Solution and working features
 
-City search uses the free Open-Meteo geocoding API.
+- **Planet:** NASA GISTEMP v4 global annual anomaly, 1880 to 2025. One note per year; higher means warmer.
+- **Poles:** GISTEMP zonal means. Arctic left, Tropics centre, Antarctic right, one shared scale.
+- **My Place:** NASA POWER monthly temperature, rain rate and sunlight for any city, with nine saved cities including Dhaka.
+- **Compare:** two cities, one per ear, on one shared °C scale over the months both have.
+- **Events:** NASA EONET events over the last 60 days. Fires crackle, storms drum, ice rings; west to east is left to right.
+- **Scan:** a line sweeps NASA GIBS maps (air temperature, sea surface, plants), or any image, such as an Earth Information Center frame. Uploaded images play colour and brightness, not measurements.
+- **Take a listen:** a short guided listen with captions taken from the data, optional spoken captions.
+- **Range, Share, Data:** listen to any span of years, share the exact setup as a link, and download the selected numbers as CSV with source notes.
+- **Findings:** one or two results computed from what you selected.
+- Keyboard control, screen-reader labels, visible focus, reduced-motion support, offline use after one visit, and one-pass recording.
 
-## Tools
+## NASA data and how we use it
 
-TypeScript, Vite, Tone.js for sound, uPlot for charts and GitHub Pages for hosting. Everything is free and open source.
+| Dataset | Used for | Notes |
+| --- | --- | --- |
+| GISTEMP v4 global (GISS) | Planet: pitch, brightness, heat hiss | °C anomaly vs 1951–1980, annual J–D means |
+| GISTEMP v4 zonal (GISS) | Poles: three voices panned left, centre, right | 64–90°N, 24°S–24°N, 90–64°S |
+| POWER monthly point, AG community (LaRC) | My Place and Compare: T2M pitch, PRECTOTCORR note count, ALLSKY_SFC_SW_DWN brightness | °C, mm/day (average daily rate, not a monthly total), MJ/m²/day; units checked against the API's metadata |
+| EONET v3 (Earth Observatory) | Events: category sounds and stereo position | Tracked events only; not a disaster census or evidence of cause |
+| GIBS WMS + colormaps (ESDIS) | Scan: map columns and bands become notes | Values are read back from rendered colours, so they are approximate |
 
-## 30-second demo script
+Other: Open-Meteo geocoding for city search (CC BY 4.0).
 
-1. (0–5 s) "This is 146 years of Earth's temperature as music." Press ▶ on Planet since 1880 at 4×.
-2. (5–12 s) "Listen to it rise. Every note is a year, and the last notes are the hottest."
-3. (12–20 s) Switch to Poles vs Tropics with headphones on. "The Arctic, in your left ear, climbs away from everything else. It's warming 2.7 times faster."
-4. (20–26 s) Open My Place and pick your own city. "This is your city since 2001."
-5. (26–30 s) Open Earth right now. "And this is the last two months of fires and storms. Hear NASA data at earth-in-sound."
+## Technical approach
 
-## 7-slide outline
+TypeScript, Vite, Tone.js and uPlot, deployed as static files on GitHub Pages. A Node script downloads NASA data, validates it (ordered numeric years, at least 24 complete POWER months with expected units, no `-999` fill values or month-13 annual summaries) and stores it with its source URL and retrieval time. The browser plays bundled data first and tries live NASA requests with timeouts. A service worker caches the app, font and all bundled data on the first visit. Values map to a C major pentatonic scale through one fixed scale per view. Audio passes through a compressor and limiter.
 
-1. **Title:** Earth in Sound. Hear NASA climate data.
-2. **Problem:** climate charts are easy to ignore and hard for people with low vision to use.
-3. **Solution:** turn the data into sound. Show the screenshot with the playhead.
-4. **Five tracks:** Planet, Poles vs Tropics, My Place, Earth right now and Scan the Planet, each with a one-line finding.
-5. **NASA data:** GISTEMP v4, POWER, EONET and GIBS, and how each value maps to sound.
-6. **Built for real use:** works offline, keyboard and screen-reader friendly, and records a song to share.
-7. **Next steps and team:** more datasets such as sea level and CO₂, classroom use, and team credits.
+## Limitations
+
+- Sound is a designed translation, not a measurement. Pitch is relative within a view's scale.
+- POWER values are grid-cell estimates, not station readings. Rain is a daily rate.
+- Scan values are approximate because they are decoded from map colours.
+- EONET lists events NASA tracks, with a lag of a few days, and says nothing about causes.
+- We have not yet tested with blind or low-vision listeners, teachers or students.
+- Recording depends on browser support for MediaRecorder and WebM, especially on Safari and iOS.
+
+## Community involvement
+
+[Add only what actually happened: who tried it, what they said, what we changed.] Our planned test is in [TESTING.md](TESTING.md).
+
+## Team roles
+
+[Team name] · [Member 1: role] · [Member 2: role] · [Member 3: role] · [Member 4: role]
+
+Commit history shows work by nafisa1602, Prottasha Saha Ayoishee and Fahmida Munni, plus the first commit from ctf parina. [Replace with names and roles each member approves. Do not include anyone under 18 by name, voice or face.]
+
+## References
+
+- GISTEMP Team, 2026: GISS Surface Temperature Analysis (GISTEMP), version 4. NASA GISS. https://data.giss.nasa.gov/gistemp/
+- Lenssen, N., et al., 2019: Improvements in the GISTEMP uncertainty model. J. Geophys. Res. Atmos., 124, 6307–6326.
+- NASA Langley Research Center POWER Project. https://power.larc.nasa.gov/
+- NASA EONET v3. https://eonet.gsfc.nasa.gov/docs/v3
+- NASA GIBS. https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api
+- Open-Meteo Geocoding API. https://open-meteo.com/en/docs/geocoding-api
+- Tone.js (MIT), uPlot (MIT), Vite (MIT), Manrope via Fontsource (SIL OFL 1.1).
+- The Earth-and-wave mark and all interface graphics are original. No stock media is used. NASA has not endorsed this project, and we don't use NASA logos.
+
+## Use of AI
+
+[Required on the project page. Fill in from the team's own record: tools, what each helped with, important prompts, human decisions and what the team tested. Earth in Sound contains no AI model; all values come from NASA or the user's own image.]
+
+---
+
+# Earth in Sound: অল্প কথায় (Bangla summary)
+
+[Optional. Add a short Bangla summary written by a team member, if the team wants one.]
