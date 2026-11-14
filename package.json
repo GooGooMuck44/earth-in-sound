@@ -9,9 +9,10 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run && npm run build && npm run test:offline",
+    "test": "vitest run && npm run test:data && npm run build && npm run test:offline",
     "test:unit": "vitest run",
-    "test:offline": "node scripts/verify-offline.mjs"
+    "test:offline": "node scripts/verify-offline.mjs",
+    "test:data": "node --test scripts/validate-nasa.check.mjs"
   },
   "license": "MIT",
   "dependencies": {

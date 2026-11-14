@@ -1,4 +1,11 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+
+import { validateYears, validatePower } from './validate-nasa.mjs';
+
+const only = process.argv.find((arg) => arg.startsWith('--only='))?.slice(7).split(',');
+const groups = ['global', 'zones', 'eonet', 'gibs', 'power'];
+if (only?.some((group) => !groups.includes(group))) throw new Error('Unknown --only group. Use ' + groups.join(','));
+const selected = (group) => !only || only.includes(group);
 
 const globalCsvUrl = "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv";
 const zonalCsvUrl = "https://data.giss.nasa.gov/gistemp/tabledata_v4/ZonAnn.Ts+dSST.csv";
@@ -29,7 +36,7 @@ function readCsvTable(csvText) {
   const lines = csvText.split(/\r?\n/);
   const headerLine = lines.findIndex((line) => line.startsWith("Year,"));
   if (headerLine < 0) throw new Error("unexpected CSV layout");
-  const columns = lines[headerLine].split(",");
+  const columns = lines[headerLine].split(",").map((cell) => cell.trim());
   const rows = lines
     .slice(headerLine + 1)
     .map((line) => line.split(","))
@@ -37,18 +44,23 @@ function readCsvTable(csvText) {
   return { columns, rows };
 }
 
-const readNumber = (cell) => (cell && cell !== "***" && Number.isFinite(Number(cell)) ? Number(cell) : null);
+const readNumber = (cell) => (cell?.trim() && cell.trim() !== "***" && Number.isFinite(Number(cell)) ? Number(cell) : null);
 
 async function saveJson(name, content) {
-  await writeFile(new URL(name, dataFolder), JSON.stringify({ ...content, fetched: new Date().toISOString() }));
+  const target = new URL(name, dataFolder);
+  const temporary = new URL(name + '.tmp', dataFolder);
+  await writeFile(temporary, JSON.stringify({ ...content, fetched: new Date().toISOString() }));
+  await rename(temporary, target);
 }
 
-try {
+if (selected("global")) try {
   const { columns, rows } = readCsvTable(await (await download(globalCsvUrl)).text());
   const annualColumn = columns.indexOf("J-D");
+  if (annualColumn < 0) throw new Error("GISTEMP is missing J-D column");
   const years = rows
     .map((cells) => ({ year: Number(cells[0]), anomaly: readNumber(cells[annualColumn]) }))
     .filter((entry) => entry.anomaly !== null);
+  validateYears(years, ["anomaly"]);
   await saveJson("gistemp.json", { source: globalCsvUrl, baseline: "1951-1980", years });
   console.log(`✓ GISTEMP global: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
 } catch (error) {
@@ -56,9 +68,13 @@ try {
   console.error(`✗ GISTEMP global failed: ${error.message}`);
 }
 
-try {
+if (selected("zones")) try {
   const { columns, rows } = readCsvTable(await (await download(zonalCsvUrl)).text());
-  const column = (name) => columns.indexOf(name);
+  const column = (name) => {
+    const index = columns.indexOf(name);
+    if (index < 0) throw new Error('Missing zonal column ' + name);
+    return index;
+  };
   const years = rows
     .map((cells) => ({
       year: Number(cells[0]),
@@ -68,6 +84,7 @@ try {
       antarctic: readNumber(cells[column("90S-64S")]),
     }))
     .filter((entry) => [entry.global, entry.arctic, entry.tropics, entry.antarctic].every((value) => value !== null));
+  validateYears(years, ["global", "arctic", "tropics", "antarctic"]);
   await saveJson("zones.json", { source: zonalCsvUrl, baseline: "1951-1980", years });
   console.log(`✓ GISTEMP zones: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
 } catch (error) {
@@ -75,7 +92,7 @@ try {
   console.error(`✗ GISTEMP zones failed: ${error.message}`);
 }
 
-try {
+if (selected("eonet")) try {
   const eonetUrl = "https://eonet.gsfc.nasa.gov/api/v3/events?status=all&days=60";
   const body = await (await download(eonetUrl)).json();
   const pointFor = (geometry) => {
@@ -121,7 +138,7 @@ const mapUrl = (layer, date) =>
     TIME: date,
   })}`;
 
-try {
+if (selected("gibs")) try {
   await mkdir(new URL("gibs/", dataFolder), { recursive: true });
   const caps = await (await download(`${gibs}/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetCapabilities`)).text();
   const saveFile = async (name, url) =>
@@ -149,7 +166,7 @@ try {
 }
 
 const currentYear = new Date().getFullYear();
-for (const place of examplePlaces) {
+for (const place of selected("power") ? examplePlaces : []) {
   let saved = false;
   for (const lastYear of [currentYear - 1, currentYear - 2]) {
     const query = new URLSearchParams({
@@ -164,7 +181,8 @@ for (const place of examplePlaces) {
     const url = `https://power.larc.nasa.gov/api/temporal/monthly/point?${query}`;
     try {
       const body = await (await download(url, 2)).json();
-      await saveJson(`places/${place.slug}.json`, { place, source: url, parameter: body.properties.parameter });
+      const parameter = validatePower(body);
+      await saveJson(`places/${place.slug}.json`, { place, source: url, parameter, parameters: body.parameters, header: body.header });
       console.log(`✓ POWER: ${place.name} ${powerFirstYear}–${lastYear}`);
       saved = true;
       break;

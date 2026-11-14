@@ -122,3 +122,24 @@ Code map: `src/data.ts` loads NASA data, `src/sonify.ts` maps data to sound and 
 - NASA Langley Research Center POWER Project, funded through the NASA Earth Science Applied Science Program. https://power.larc.nasa.gov/
 - NASA Earth Observatory Natural Event Tracker (EONET). https://eonet.gsfc.nasa.gov/
 - Place search: Open-Meteo Geocoding API (CC BY 4.0).
+
+## Refreshing and validating NASA climate data
+
+This app uses NASA climate records with deterministic sound mappings; it does not train an AI model or create synthetic climate observations. NASA's general portals are discovery resources, not a training dataset.
+
+Refresh just the climate records (including the Dhaka offline preset):
+
+```bash
+npm ci
+npm run data -- --only=global,zones,power
+npm test
+npm run build
+```
+
+The default `npm run data` still refreshes all sources, including EONET and GIBS. Supported `--only` groups are `global,zones,power,eonet,gibs`. Commit the updated `public/data/` files with your contribution. Failed climate downloads keep the previous saved file and cause a nonzero exit code.
+
+Climate downloads are checked before replacing saved files: GISTEMP annual records must be numeric and ordered, and POWER must contain at least 24 complete months for all three parameters with the expected units. Missing values (`-999`) and annual summary entries (month `13`) are not monthly observations. The monthly POWER files retain NASA parameter descriptions, units, API header, original request URL, and retrieval time for traceability.
+
+POWER uses the `AG` community: temperature is in degrees Celsius, precipitation is the monthly mean daily rate in **mm/day**, and shortwave irradiance is **MJ/m²/day**. These are the units shown by the app; precipitation is not a monthly rainfall total. GISTEMP anomalies remain relative to **1951–1980**. Comparing separately normalized city tracks by pitch does not compare their absolute temperatures.
+
+Official references: [GISTEMP v4](https://data.giss.nasa.gov/gistemp/), [POWER monthly API](https://power.larc.nasa.gov/docs/services/api/temporal/monthly/), [EONET v3](https://eonet.gsfc.nasa.gov/docs/v3), and [NASA Earthdata GIBS](https://www.earthdata.nasa.gov/engage/open-data-services-software/earthdata-developer-portal/gibs-api). These endpoints do not require a NASA API key. Other NASA products may require a key or Earthdata Login.
