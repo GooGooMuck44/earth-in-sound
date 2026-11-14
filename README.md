@@ -154,6 +154,15 @@ These are ideas, not shipped features:
 
 [Testing notes](docs/TESTING.md) list what was checked and what still needs people and devices.
 
+## Our team
+
+We are four fifth-semester students from the **Department of Software Engineering, University of Dhaka**, building Earth in Sound together.
+
+- **Nafisa Usrat**
+- **Prottasha Saha Ayoishee**
+- **Fahmida Munni**
+- **Miti Ara Ferdousi**
+
 ## Credits
 
 Our thanks to NASA GISS, the NASA Langley POWER Project, NASA EONET, and NASA GIBS/ESDIS for the data and imagery, and Open-Meteo for place search. Tone.js and uPlot make the browser sound and charts possible. The Manrope typeface (SIL Open Font License) is bundled through Fontsource. The Earth-and-wave mark is our own.
