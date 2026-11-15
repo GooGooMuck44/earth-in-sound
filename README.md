@@ -168,3 +168,5 @@ We are four fifth-semester students from the **Department of Software Engineerin
 Our thanks to NASA GISS, the NASA Langley POWER Project, NASA EONET, and NASA GIBS/ESDIS for the data and imagery, and Open-Meteo for place search. Tone.js and uPlot make the browser sound and charts possible. The Manrope typeface (SIL Open Font License) is bundled through Fontsource. The Earth-and-wave mark is our own.
 
 Earth in Sound is a team project built using public NASA data. NASA has not endorsed this app.
+
+Vercel deployment settings and automatic updates are described in the [developer guide](docs/DEVELOPMENT.md#vercel).

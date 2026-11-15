@@ -64,6 +64,19 @@ POWER files retain the request URL, retrieval time, NASA parameter descriptions,
 
 ## Deploy
 
+### Vercel
+
+1. Push the reviewed changes to `main`, then choose **Add New → Project** in Vercel and import `GooGooMuck44/earth-in-sound` from GitHub.
+2. Select `main` as the production branch and repository root `./`.
+3. Confirm **Framework: Vite**, **Install: `npm ci`**, **Build: `npm run build`**, and **Output: `dist`**. Use Node 22.12 or newer. No API keys or environment variables are needed.
+4. Click **Deploy**, then check playback and offline reopening at the HTTPS address after caching finishes.
+
+Future pushes to `main` trigger production deployments through the GitHub connection. `vercel.json` records the build settings and revalidates HTML and the service worker. There is no backend or catch-all rewrite.
+
+Each build fingerprints bundled assets and public files into the offline cache name. Installation saves the full shell, fonts, NASA records and maps before activation. Activation removes only older app caches. A returning controlled tab reloads once when the new worker takes control; registration bypasses HTTP caches and checks again when connectivity returns.
+
+### Other hosts
+
 For GitHub Pages, choose **GitHub Actions** under repository Settings → Pages. The deploy workflow refreshes NASA data, builds, and publishes on pushes to `main`. A data-refresh failure may leave committed copies in use; inspect workflow output.
 
 Other static hosts can use `npm run build` and serve `dist/`. The relative Vite base keeps assets inside a repository subpath.
