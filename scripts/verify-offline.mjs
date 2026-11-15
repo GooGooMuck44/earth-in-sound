@@ -5,6 +5,8 @@ import { runInNewContext } from "node:vm";
 const dist = new URL("../dist/", import.meta.url);
 const markup = await readFile(new URL("index.html", dist), "utf8");
 const workerCode = await readFile(new URL("offline-worker.js", dist), "utf8");
+assert.ok(!workerCode.includes("__APP_VERSION__"), "worker build fingerprint missing");
+const deleted = [];
 const listeners = new Map();
 const stored = new Map();
 let online = true;
@@ -48,7 +50,7 @@ const context = {
   caches: {
     async open() { return cache; },
     async keys() { return ["earth-in-sound-v3", "another-app-v1"]; },
-    async delete() { return true; },
+    async delete(name) { deleted.push(name); return true; },
   },
   self: {
     registration: { scope: "https://example.test/earth-in-sound/" },
@@ -89,3 +91,9 @@ assert.match(await (await offlineResponse).text(), /Earth in Sound/);
 console.log(`✓ first-visit cache includes ${assetPaths.length} hashed assets and all bundled track data`);
 console.log("✓ font and icon cached for offline use");
 console.log("✓ offline navigation reopens the cached app at the GitHub Pages base path");
+
+let activation;
+listeners.get("activate")({ waitUntil(promise) { activation = promise; } });
+await activation;
+assert.deepEqual(deleted, ["earth-in-sound-v3"]);
+console.log("✓ activation removes old app caches and preserves other apps");

@@ -1,5 +1,5 @@
 const cachePrefix = "earth-in-sound-";
-const cacheName = `${cachePrefix}v8`;
+const cacheName = `${cachePrefix}__APP_VERSION__`;
 const examplePlaces = ["new-york", "london", "lagos", "delhi", "kathmandu", "dhaka", "tokyo", "sao-paulo", "sydney"];
 const startupFiles = [
   "./mark.svg",

@@ -976,7 +976,18 @@ document.addEventListener("visibilitychange", () => {
 if (!engine.canRecord) page.recordNote.hidden = false;
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}offline-worker.js`).catch((problem) => console.error(problem));
+  const returningVisitor = Boolean(navigator.serviceWorker.controller);
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (returningVisitor && !refreshing) {
+      refreshing = true;
+      location.reload();
+    }
+  });
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}offline-worker.js`, { updateViaCache: "none" })
+    .then((registration) => {
+      window.addEventListener("online", () => void registration.update().catch(console.error));
+    }).catch(console.error);
 }
 
 fillIcons();
