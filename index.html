@@ -86,6 +86,7 @@
           <div class="stage-actions">
             <button id="open-data" class="quiet" type="button"><span data-icon="table"></span><span>Data</span></button>
             <button id="open-share" class="quiet" type="button"><span data-icon="share"></span><span>Share</span></button>
+            <button id="open-saved" class="quiet" type="button"><span>Saved setups</span></button>
           </div>
         </div>
 
@@ -222,6 +223,18 @@
       <p id="share-warning" class="warn" hidden>This link includes your location.</p>
       <p class="note">Opens this view, place, range and sound. It won't play until someone presses play.</p>
       <div class="sheet-actions"><button id="copy" class="button" type="button">Copy link</button><span id="copied" class="note" role="status"></span></div>
+    </dialog>
+
+    <dialog id="saved" class="sheet" aria-labelledby="saved-title">
+      <div class="sheet-head"><h2 id="saved-title">Saved setups</h2><button class="round close" type="button" aria-label="Close" data-close><span data-icon="close"></span></button></div>
+      <p class="note">Keep up to eight listening setups on this device.</p>
+      <form id="save-setup-form" class="search">
+        <label class="sr-only" for="setup-name">Setup name</label>
+        <input id="setup-name" maxlength="40" placeholder="Name this setup" required />
+        <button class="button" type="submit">Save current</button>
+      </form>
+      <p id="saved-note" class="note" role="status"></p>
+      <ul id="saved-list" class="chips saved-list" aria-label="Saved listening setups"></ul>
     </dialog>
 
     <footer class="foot wrap">NASA GISTEMP · POWER · EONET · GIBS</footer>

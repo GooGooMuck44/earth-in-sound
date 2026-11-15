@@ -87,6 +87,10 @@ const page = {
   csv: $<HTMLAnchorElement>("csv"),
   notes: $<HTMLAnchorElement>("notes"),
   share: $<HTMLDialogElement>("share"),
+  saved: $<HTMLDialogElement>("saved"),
+  savedList: $<HTMLUListElement>("saved-list"),
+  savedNote: $("saved-note"),
+  setupName: $<HTMLInputElement>("setup-name"),
   shareLink: $<HTMLInputElement>("share-link"),
   shareWarning: $("share-warning"),
   copy: $<HTMLButtonElement>("copy"),
@@ -829,6 +833,85 @@ function openShare() {
   page.shareLink.select();
 }
 
+const savedKey = "earth-in-sound:setups";
+type SavedSetup = { name: string; hash: string };
+
+function readSaved(): SavedSetup[] {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(savedKey) ?? "[]");
+    if (!Array.isArray(value)) return [];
+    return value.filter((item): item is SavedSetup => Boolean(item && typeof item.name === "string" && typeof item.hash === "string" && parseSetup(item.hash, presets))).slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+function renderSaved() {
+  const entries = readSaved();
+  page.savedList.replaceChildren();
+  if (!entries.length) {
+    const empty = document.createElement("li");
+    empty.className = "muted";
+    empty.textContent = "No saved setups yet.";
+    page.savedList.append(empty);
+    return;
+  }
+  entries.forEach((entry, index) => {
+    const item = document.createElement("li");
+    const load = document.createElement("button");
+    load.type = "button";
+    load.textContent = entry.name;
+    load.addEventListener("click", async () => {
+      const setup = parseSetup(entry.hash, presets);
+      if (!setup) return;
+      page.saved.close();
+      await applySetup(setup);
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "quiet small";
+    remove.textContent = "Remove";
+    remove.setAttribute("aria-label", `Remove ${entry.name}`);
+    remove.addEventListener("click", () => {
+      entries.splice(index, 1);
+      localStorage.setItem(savedKey, JSON.stringify(entries));
+      renderSaved();
+    });
+    item.append(load, remove);
+    page.savedList.append(item);
+  });
+}
+
+$("open-saved").addEventListener("click", () => {
+  page.savedNote.textContent = "";
+  renderSaved();
+  page.saved.showModal();
+});
+$("save-setup-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const setup = currentSetup();
+  if (sharesLocation(setup)) {
+    page.savedNote.textContent = "For privacy, a setup using your precise location can't be saved.";
+    return;
+  }
+  const entries = readSaved();
+  if (entries.length >= 8) {
+    page.savedNote.textContent = "Remove a saved setup before adding another.";
+    return;
+  }
+  const name = page.setupName.value.trim();
+  if (!name) return;
+  entries.push({ name: name.slice(0, 40), hash: buildSetup(setup) });
+  try {
+    localStorage.setItem(savedKey, JSON.stringify(entries));
+    page.setupName.value = "";
+    page.savedNote.textContent = "Saved on this device.";
+    renderSaved();
+  } catch {
+    page.savedNote.textContent = "Couldn't save on this device. Check its available storage.";
+  }
+});
+
 page.copy.addEventListener("click", async () => {
   try {
     await navigator.clipboard.writeText(page.shareLink.value);
@@ -842,7 +925,7 @@ page.copy.addEventListener("click", async () => {
 $("open-data").addEventListener("click", openData);
 $("open-share").addEventListener("click", openShare);
 $("open-about").addEventListener("click", () => page.about.showModal());
-for (const dialog of [page.about, page.data, page.share]) {
+for (const dialog of [page.about, page.data, page.share, page.saved]) {
   dialog.querySelector("[data-close]")?.addEventListener("click", () => dialog.close());
   dialog.addEventListener("click", (event) => event.target === dialog && dialog.close());
 }
