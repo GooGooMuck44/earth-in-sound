@@ -70,7 +70,7 @@
 
       <nav class="tabs" role="tablist" aria-label="Views">
         <button role="tab" id="tab-global" aria-controls="stage" aria-selected="true" tabindex="0">Planet</button>
-        <button role="tab" id="tab-zones" aria-controls="stage" aria-selected="false" tabindex="-1">Poles</button>
+        <button role="tab" id="tab-zones" aria-controls="stage" aria-selected="false" tabindex="-1">Regions</button>
         <button role="tab" id="tab-place" aria-controls="stage" aria-selected="false" tabindex="-1">My Place</button>
         <button role="tab" id="tab-compare" aria-controls="stage" aria-selected="false" tabindex="-1">Compare</button>
         <button role="tab" id="tab-events" aria-controls="stage" aria-selected="false" tabindex="-1">Events</button>
@@ -100,6 +100,8 @@
           <ul id="results" class="chips" aria-label="Search results"></ul>
           <ul id="presets" class="chips" aria-label="Saved cities"></ul>
         </div>
+
+        <div id="band-tools" class="tools" hidden><ul id="bands" class="chips" aria-label="Regions"></ul></div>
 
         <div id="compare-tools" class="tools row" hidden>
           <label class="field"><span class="dot left" aria-hidden="true"></span><span class="sr-only">Left ear</span><select id="city-a" aria-label="Left ear city"></select></label>
@@ -192,7 +194,7 @@
       <h3>Views</h3>
       <dl class="defs">
         <dt>Planet</dt><dd>Global temperature each year, compared with 1951–1980.</dd>
-        <dt>Poles</dt><dd>Arctic in the left ear, Tropics in the middle, Antarctic in the right.</dd>
+        <dt>Regions</dt><dd>Three latitude bands, one in the left ear, one in the middle, one in the right: poles and tropics, hemispheres, or northern and southern bands.</dd>
         <dt>My Place</dt><dd>A city month by month: temperature, rain and sunlight.</dd>
         <dt>Compare</dt><dd>Two cities, one in each ear, on one shared temperature scale.</dd>
         <dt>Events</dt><dd>Natural events NASA tracked over the last 60 days.</dd>

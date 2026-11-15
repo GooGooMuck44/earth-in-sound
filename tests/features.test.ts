@@ -6,6 +6,7 @@ import type { ClimatePoint, ClimateTrack, Place } from "../src/data";
 import { findingsFor, monthlyMeans } from "../src/findings";
 import { clampRange, slice, span } from "../src/range";
 import { buildSetup, parseSetup, sharesLocation } from "../src/share";
+import { bandOrder, bandSets } from "../src/bands";
 import { compareSteps, eventSteps, maxHits, pentatonic, stepsFor } from "../src/sonify";
 
 const meta = { dataset: "Test", link: "https://example.test", units: "°C", coverage: "", status: "saved" as const, limit: "" };
@@ -175,5 +176,27 @@ describe("dense event days", () => {
     ]);
     expect(step.hits!.length).toBeLessThanOrEqual(maxHits);
     expect(new Set(step.hits!.map((hit) => hit.instrument))).toEqual(new Set(["crackle", "volcano"]));
+  });
+});
+
+describe("region bands", () => {
+  const places = presets as Place[];
+
+  it("keeps the band set in shared links", () => {
+    const hash = buildSetup({ view: "zones", bands: "north" });
+    expect(hash).toBe("#view=poles&bands=north");
+    expect(parseSetup(hash, places)).toEqual({ view: "zones", bands: "north" });
+  });
+
+  it("leaves the default set out of links", () => {
+    expect(buildSetup({ view: "zones", bands: "poles" })).toBe("#view=poles");
+  });
+
+  it("ignores unknown band sets", () => {
+    expect(parseSetup("#view=poles&bands=nowhere", places)?.bands).toBeUndefined();
+  });
+
+  it("gives every set three distinct columns", () => {
+    for (const set of bandOrder) expect(new Set(bandSets[set].columns).size).toBe(3);
   });
 });

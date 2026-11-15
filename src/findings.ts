@@ -55,15 +55,16 @@ export function findingsFor(track: ClimateTrack): Finding[] {
     const trend = decadeTrend(points, (point) => point.temperature);
     if (Number.isFinite(trend)) out.push({ label: "Trend", value: `${signed(trend)} °C per decade` });
   } else if (track.kind === "zones") {
+    const [first, middle, last] = track.bands ?? ["Arctic", "Tropics", "Antarctic"];
     const zones = [
-      { name: "Arctic", trend: decadeTrend(points, (point) => point.arctic) },
-      { name: "Tropics", trend: decadeTrend(points, (point) => point.tropics) },
-      { name: "Antarctic", trend: decadeTrend(points, (point) => point.antarctic) },
+      { name: first, trend: decadeTrend(points, (point) => point.arctic) },
+      { name: middle, trend: decadeTrend(points, (point) => point.tropics) },
+      { name: last, trend: decadeTrend(points, (point) => point.antarctic) },
     ];
     const fastest = topBy(zones, (zone) => zone.trend);
     if (fastest.length) out.push({ label: "Fastest warming", value: `${joinTies(fastest.map((zone) => zone.name))} · ${signed(fastest[0].trend)} °C per decade` });
-    const warmestArctic = topBy(points, (point) => point.arctic ?? NaN);
-    if (warmestArctic.length) out.push({ label: "Warmest Arctic year", value: joinTies(warmestArctic.map((point) => point.label)) });
+    const warmestFirst = topBy(points, (point) => point.arctic ?? NaN);
+    if (warmestFirst.length) out.push({ label: `Warmest ${first} year`, value: joinTies(warmestFirst.map((point) => point.label)) });
   } else if (track.kind === "place") {
     const rain = calendarPeak(points, (point) => point.rainfall, 1);
     if (rain) out.push({ label: "Rain peaks", value: rain });

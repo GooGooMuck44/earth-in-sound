@@ -1,5 +1,6 @@
 import type { ClimatePoint, ClimateTrack } from "./data";
 import { categoryName } from "./findings";
+import { bandSets } from "./bands";
 
 const cell = (value: unknown) => {
   if (value == null || (typeof value === "number" && !Number.isFinite(value))) return "";
@@ -9,6 +10,11 @@ const cell = (value: unknown) => {
 
 const slug = (text: string) => text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
 
+function bandHeader(names?: string[]) {
+  const set = Object.values(bandSets).find((item) => item.names.join() === (names ?? bandSets.poles.names).join()) ?? bandSets.poles;
+  return set.names.map((name, index) => (set === bandSets.poles ? `${slug(name)}_${slug(set.columns[index])}_c` : `band_${slug(set.columns[index])}_c`));
+}
+
 export function table(track: ClimateTrack): { header: string[]; rows: unknown[][] } {
   const points = track.points;
   const pick = (read: (point: ClimatePoint) => unknown[]) => points.map(read);
@@ -17,7 +23,7 @@ export function table(track: ClimateTrack): { header: string[]; rows: unknown[][
       return { header: ["year", "anomaly_c_vs_1951_1980"], rows: pick((point) => [point.key, point.temperature]) };
     case "zones":
       return {
-        header: ["year", "global_c_vs_1951_1980", "arctic_64n_90n_c", "tropics_24s_24n_c", "antarctic_90s_64s_c"],
+        header: ["year", "global_c_vs_1951_1980", ...bandHeader(track.bands)],
         rows: pick((point) => [point.key, point.temperature, point.arctic, point.tropics, point.antarctic]),
       };
     case "place":

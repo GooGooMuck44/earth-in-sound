@@ -84,9 +84,9 @@ export class ClimateChart {
         return [{ name: "Global", color: warm, read: (point) => point.temperature, units: "°C", digits: 2, signed: true, width: 2 }];
       case "zones":
         return [
-          { name: "Arctic", color: token("--ice"), read: (point) => point.arctic, units: "°C", digits: 2, signed: true, width: 2 },
-          { name: "Tropics", color: token("--sun"), dash: [7, 5], read: (point) => point.tropics, units: "°C", digits: 2, signed: true, width: 2 },
-          { name: "Antarctic", color: token("--water"), dash: [2, 4], read: (point) => point.antarctic, units: "°C", digits: 2, signed: true, width: 2 },
+          { name: track.bands?.[0] ?? "Arctic", color: token("--ice"), read: (point) => point.arctic, units: "°C", digits: 2, signed: true, width: 2 },
+          { name: track.bands?.[1] ?? "Tropics", color: token("--sun"), dash: [7, 5], read: (point) => point.tropics, units: "°C", digits: 2, signed: true, width: 2 },
+          { name: track.bands?.[2] ?? "Antarctic", color: token("--water"), dash: [2, 4], read: (point) => point.antarctic, units: "°C", digits: 2, signed: true, width: 2 },
         ];
       case "place":
         return [
