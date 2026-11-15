@@ -17,6 +17,7 @@ import {
   type TrackKind,
 } from "./data";
 import { findingsFor, signed } from "./findings";
+import { startHome } from "./home";
 import { fillIcons, icon } from "./icons";
 import { clampRange, isFull, rangeKinds, rangeLabel, slice, span, yearsIn, type YearRange } from "./range";
 import { latestMonths, loadImageScan, loadScan, scanLayers, type ScanLayer } from "./scan";
@@ -379,7 +380,7 @@ function drawWave() {
   const samples = engine.wave?.getValue();
   if (!samples) return;
   pen.lineWidth = 1.5 * ratio;
-  pen.strokeStyle = "rgba(88, 214, 162, 0.7)";
+  pen.strokeStyle = "rgba(140, 196, 255, 0.75)";
   pen.beginPath();
   for (let at = 0; at < samples.length; at++) {
     const x = (at / (samples.length - 1)) * width;
@@ -596,7 +597,7 @@ function remember() {
     delete setup.city2;
   }
   const hash = buildSetup(setup);
-  history.replaceState(null, "", hash === "#view=planet" ? location.pathname + location.search : hash);
+  history.replaceState(history.state, "", hash === "#view=planet" ? location.pathname + location.search : hash);
 }
 
 async function applySetup(setup: Setup) {
@@ -1007,3 +1008,17 @@ window.addEventListener("hashchange", () => {
 
 const opening = parseSetup(location.hash, presets);
 void applySetup(opening ?? { view: "global" });
+
+startHome(presets, {
+  open: (hash) => {
+    const setup = hash ? parseSetup(hash, presets) : null;
+    if (!setup) return;
+    if (tour.active) leaveTour();
+    void applySetup(setup);
+  },
+  tour: () => void startTour(),
+  leave: () => {
+    if (tour.active) leaveTour();
+    else halt();
+  },
+});
