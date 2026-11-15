@@ -142,6 +142,7 @@ Want to help? Try a saved city, test a keyboard flow, check a source, or tell us
 - **Share:** a link that restores the view, cities, range, sound and speed without autoplay. Links that hold your location say so first.
 - **Data:** the dataset, source link, units, coverage, retrieval date, baseline, live or saved status, a limitation, and a CSV download.
 - **Findings:** one or two results calculated from the selected data, with ties shown.
+- **Saved setups:** keep up to eight named listening setups on this device and restore them later. Setups using a precise current location are not saved.
 
 ## Next listens
 
@@ -150,7 +151,6 @@ These are ideas, not shipped features:
 - **Then / Now:** hear equal historical periods side by side.
 - **Mix:** isolate temperature, rain, and sunlight.
 - **Learn:** small classroom activities, with English and Bangla support.
-- **Saved setups:** keep a few favourite listening setups on the device.
 
 [Testing notes](docs/TESTING.md) list what was checked and what still needs people and devices.
 
