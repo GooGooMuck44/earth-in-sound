@@ -10,6 +10,7 @@ const paths: Record<string, string> = {
   share: '<path d="M12 4v11M8 8l4-4 4 4"/><path d="M6 12v6.5h12V12"/>',
   table: '<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M10 10v9"/>',
   pin: '<path d="M12 21s6-5.8 6-11a6 6 0 0 0-12 0c0 5.2 6 11 6 11z"/><circle cx="12" cy="10" r="2.2"/>',
+  arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   spark: '<path d="M3 12h2.5l2-5 3 10 3-13 3 11 2-3H21"/>',
 };

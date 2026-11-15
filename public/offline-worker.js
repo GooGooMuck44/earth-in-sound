@@ -3,6 +3,9 @@ const cacheName = `${cachePrefix}__APP_VERSION__`;
 const examplePlaces = ["new-york", "london", "lagos", "delhi", "kathmandu", "dhaka", "tokyo", "sao-paulo", "sydney"];
 const startupFiles = [
   "./mark.svg",
+  "./home/earth-sm.jpg",
+  "./home/night-sm.jpg",
+  "./home/clouds.jpg",
   "./data/gistemp.json",
   "./data/zones.json",
   "./data/eonet.json",

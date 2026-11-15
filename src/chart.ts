@@ -105,7 +105,7 @@ export class ClimateChart {
           width: 2,
         }));
       case "events":
-        return [{ name: "Tracked events", color: token("--green"), read: (point) => point.temperature, units: "events", digits: 0, bars: true }];
+        return [{ name: "Tracked events", color: token("--accent"), read: (point) => point.temperature, units: "events", digits: 0, bars: true }];
       default:
         return [];
     }
