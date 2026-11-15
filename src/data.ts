@@ -1,4 +1,5 @@
 import type { ScanDetails } from "./scan";
+import { bandSets, type BandSet } from "./bands";
 
 export type TrackKind = "global" | "zones" | "place" | "compare" | "events" | "scan";
 
@@ -52,6 +53,7 @@ export interface ClimateTrack {
   meta: TrackMeta;
   place?: Place;
   places?: [Place, Place];
+  bands?: [string, string, string];
 }
 
 export interface Place {
@@ -148,15 +150,10 @@ export async function loadGlobal(): Promise<ClimateTrack> {
   };
 }
 
-interface ZoneYear {
-  year: number;
-  global: number;
-  arctic: number;
-  tropics: number;
-  antarctic: number;
-}
+type ZoneYear = { year: number } & Record<string, number | undefined>;
 
-export async function loadZones(): Promise<ClimateTrack> {
+export async function loadZones(set: BandSet = "poles"): Promise<ClimateTrack> {
+  const bands = bandSets[set];
   const file = await loadSaved<{ years: ZoneYear[]; fetched?: string; source?: string }>("zones.json");
   let years = file?.years ?? null;
   let fromBackup = false;
@@ -167,12 +164,17 @@ export async function loadZones(): Promise<ClimateTrack> {
     fromBackup = true;
   }
   if (!years?.length) throw new Error("Zonal GISTEMP data is missing");
+  const [a, b, c] = bands.keys;
+  const usable = years.filter((entry) => [a, b, c].every((key) => Number.isFinite(entry[key])));
+  if (!usable.length) throw new Error(`${bands.title} data is missing`);
+  years = usable;
   return {
     kind: "zones",
-    title: "Poles and Tropics",
+    title: bands.title,
+    bands: bands.names,
     source: "NASA GISTEMP v4 zonal · vs 1951–1980",
     meta: {
-      dataset: "NASA GISTEMP v4 zonal annual means: 64°N–90°N, 24°S–24°N, 90°S–64°S",
+      dataset: `NASA GISTEMP v4 zonal annual means: ${bands.columns.join(", ")}`,
       link: "https://data.giss.nasa.gov/gistemp/",
       request: file?.source,
       units: "°C anomaly",
@@ -186,10 +188,10 @@ export async function loadZones(): Promise<ClimateTrack> {
       position: entry.year,
       label: String(entry.year),
       key: String(entry.year),
-      temperature: entry.global,
-      arctic: entry.arctic,
-      tropics: entry.tropics,
-      antarctic: entry.antarctic,
+      temperature: entry.global!,
+      arctic: entry[a],
+      tropics: entry[b],
+      antarctic: entry[c],
     })),
     fromBackup,
   };

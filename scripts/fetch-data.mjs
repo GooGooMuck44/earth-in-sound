@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 
 import { validateYears, validatePower } from './validate-nasa.mjs';
+const bandColumns = { global: 'Glob', arctic: '64N-90N', tropics: '24S-24N', antarctic: '90S-64S', north: 'NHem', south: 'SHem', n44: '44N-64N', n24: '24N-44N', n0: 'EQU-24N', s0: '24S-EQU', s24: '44S-24S', s44: '64S-44S' };
 
 const only = process.argv.find((arg) => arg.startsWith('--only='))?.slice(7).split(',');
 const groups = ['global', 'zones', 'eonet', 'gibs', 'power'];
@@ -79,12 +80,10 @@ if (selected("zones")) try {
     .map((cells) => ({
       year: Number(cells[0]),
       global: readNumber(cells[column("Glob")]),
-      arctic: readNumber(cells[column("64N-90N")]),
-      tropics: readNumber(cells[column("24S-24N")]),
-      antarctic: readNumber(cells[column("90S-64S")]),
+      ...Object.fromEntries(Object.entries(bandColumns).filter(([key]) => key !== "global").map(([key, name]) => [key, readNumber(cells[column(name)])])),
     }))
-    .filter((entry) => [entry.global, entry.arctic, entry.tropics, entry.antarctic].every((value) => value !== null));
-  validateYears(years, ["global", "arctic", "tropics", "antarctic"]);
+    .filter((entry) => Object.values(entry).every((value) => value !== null));
+  validateYears(years, Object.keys(bandColumns));
   await saveJson("zones.json", { source: zonalCsvUrl, baseline: "1951-1980", years });
   console.log(`✓ GISTEMP zones: ${years.length} years (${years[0].year}–${years.at(-1).year})`);
 } catch (error) {

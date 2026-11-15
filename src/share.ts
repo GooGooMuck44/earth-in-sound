@@ -1,5 +1,6 @@
 import type { Place, TrackKind } from "./data";
 import type { LeadSound } from "./sonify";
+import { isBandSet, type BandSet } from "./bands";
 
 export interface Setup {
   view: TrackKind;
@@ -12,6 +13,7 @@ export interface Setup {
   layer?: "air" | "sea" | "plants";
   month?: string;
   then?: boolean;
+  bands?: BandSet;
 }
 
 export const views: TrackKind[] = ["global", "zones", "place", "compare", "events", "scan"];
@@ -78,6 +80,8 @@ export function parseSetup(hash: string, presets: Place[]): Setup | null {
   const month = query.get("month");
   if (month && /^\d{4}-(0[1-9]|1[0-2])$/.test(month)) setup.month = month;
   if (query.get("then") === "1") setup.then = true;
+  const bands = query.get("bands");
+  if (view === "zones" && isBandSet(bands)) setup.bands = bands;
   return setup;
 }
 
@@ -94,6 +98,7 @@ export function buildSetup(setup: Setup): string {
     if (setup.month) query.set("month", setup.month);
     if (setup.then && setup.layer === "air") query.set("then", "1");
   }
+  if (setup.view === "zones" && setup.bands && setup.bands !== "poles") query.set("bands", setup.bands);
   if (setup.sound && setup.sound !== "glass") query.set("sound", setup.sound);
   if (setup.speed && setup.speed !== 1) query.set("speed", String(setup.speed));
   return `#${query}`;

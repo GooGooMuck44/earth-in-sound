@@ -19,7 +19,7 @@ Intended audiences (not yet tested with them): students, teachers, curious liste
 ## Solution and working features
 
 - **Planet:** NASA GISTEMP v4 global annual anomaly, 1880 to 2025. One note per year; higher means warmer.
-- **Poles:** GISTEMP zonal means. Arctic left, Tropics centre, Antarctic right, one shared scale.
+- **Regions:** GISTEMP zonal means in three bands, left, centre and right on one shared scale: poles and tropics, hemispheres, or northern and southern bands.
 - **My Place:** NASA POWER monthly temperature, rain rate and sunlight for any city, with nine saved cities including Dhaka.
 - **Compare:** two cities, one per ear, on one shared °C scale over the months both have.
 - **Events:** NASA EONET events over the last 60 days. Fires crackle, storms drum, ice rings; west to east is left to right.
@@ -34,7 +34,7 @@ Intended audiences (not yet tested with them): students, teachers, curious liste
 | Dataset | Used for | Notes |
 | --- | --- | --- |
 | GISTEMP v4 global (GISS) | Planet: pitch, brightness, heat hiss | °C anomaly vs 1951–1980, annual J–D means |
-| GISTEMP v4 zonal (GISS) | Poles: three voices panned left, centre, right | 64–90°N, 24°S–24°N, 90–64°S |
+| GISTEMP v4 zonal (GISS) | Regions: three voices panned left, centre, right | Poles and tropics, hemispheres, 44–64°N to 64–44°S bands |
 | POWER monthly point, AG community (LaRC) | My Place and Compare: T2M pitch, PRECTOTCORR note count, ALLSKY_SFC_SW_DWN brightness | °C, mm/day (average daily rate, not a monthly total), MJ/m²/day; units checked against the API's metadata |
 | EONET v3 (Earth Observatory) | Events: category sounds and stereo position | Tracked events only; not a disaster census or evidence of cause |
 | GIBS WMS + colormaps (ESDIS) | Scan: map columns and bands become notes | Values are read back from rendered colours, so they are approximate |

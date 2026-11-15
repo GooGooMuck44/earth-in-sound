@@ -17,7 +17,7 @@ Start with the planet. Find your city. Listen a little closer.
 
 Climate records tell a story. We want more people to be able to follow it.
 
-Earth in Sound turns NASA data into notes you can explore in your browser. Follow global temperature through time, hear the poles in stereo, or listen to the seasons in Dhaka and other cities. A chart moves with the sound, so you can connect each note to its value.
+Earth in Sound turns NASA data into notes you can explore in your browser. Follow global temperature through time, hear the poles, hemispheres and latitude bands in stereo, or listen to the seasons in Dhaka and other cities. A chart moves with the sound, so you can connect each note to its value.
 
 Built for NASA Space Apps, with students, teachers, and curious listeners in mind. No account, backend, or API key is needed for the sources this app uses.
 
@@ -26,7 +26,7 @@ Built for NASA Space Apps, with students, teachers, and curious listeners in min
 | View | What you can explore |
 | --- | --- |
 | **Planet** | Global temperature anomalies since 1880. Warmer years play higher, brighter notes. |
-| **Poles** | Arctic, tropical, and Antarctic records on one scale, with three voices placed across your headphones. |
+| **Regions** | Three latitude bands on one scale, with three voices placed across your headphones: the poles and tropics, the two hemispheres, or NASA's northern and southern bands. |
 | **My Place** | Monthly temperature, rain, and sunlight since 2001. Search for a city or choose a saved one. |
 | **Compare** | Two cities, one in each ear, on one shared temperature scale over the months they share. |
 | **Events** | NASA's recent natural-event feed, with category sounds and west-to-east stereo placement. |
@@ -46,13 +46,13 @@ Or explore on your own:
 
 1. Open **Planet** and press **Play**.
 2. Watch the year and value follow the notes. Drag the timeline or the chart to jump.
-3. Try **Poles** with headphones.
+3. Try **Regions** with headphones.
 4. Open **My Place** and choose **Dhaka**, or a city you know.
 5. Pick a **Range** to hear a decade or a single year.
 6. Use **Compare** to put two cities in your left and right ears.
 7. Open **Data** for the source, units and a CSV, or **Share** to send the same setup.
 
-Change the sound or speed, or record a single pass to save. Sound choices apply to Planet, My Place, and Scan; Poles, Compare and Events use their own fixed voices.
+Change the sound or speed, or record a single pass to save. Sound choices apply to Planet, My Place, and Scan; Regions, Compare and Events use their own fixed voices.
 
 ## Run locally
 
@@ -82,7 +82,7 @@ Already have the repo? Run `npm ci` once after dependency changes, then `npm run
 
 The main pitch mappings use a C major pentatonic scale. Each note is a designed translation of a data value.
 
-Each view uses one fixed pitch scale for its whole record, so choosing a shorter range keeps the same notes. Poles puts all three regions on one scale. **Compare** puts both cities on one shared °C scale across the months they both have, so the same note means the same temperature in either ear. Listening to two cities one after another in My Place does **not** compare them, because each city has its own scale. Busy event days are thinned to 16 sounds; the chart and CSV keep the full count. Missing values are skipped, never played as zero.
+Each view uses one fixed pitch scale for its whole record, so choosing a shorter range keeps the same notes. Regions puts all three bands on one scale. **Compare** puts both cities on one shared °C scale across the months they both have, so the same note means the same temperature in either ear. Listening to two cities one after another in My Place does **not** compare them, because each city has its own scale. Busy event days are thinned to 16 sounds; the chart and CSV keep the full count. Missing values are skipped, never played as zero.
 
 ## Our data
 

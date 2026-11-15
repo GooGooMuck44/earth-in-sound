@@ -17,6 +17,7 @@ import {
   type TrackKind,
 } from "./data";
 import { findingsFor, signed } from "./findings";
+import { bandOrder, bandSets, type BandSet } from "./bands";
 import { startHome } from "./home";
 import { fillIcons, icon } from "./icons";
 import { clampRange, isFull, rangeKinds, rangeLabel, slice, span, yearsIn, type YearRange } from "./range";
@@ -38,6 +39,8 @@ const page = {
   badge: $("badge"),
   placeTools: $("place-tools"),
   compareTools: $("compare-tools"),
+  bandTools: $("band-tools"),
+  bandList: $("bands"),
   scanTools: $("scan-tools"),
   cityA: $<HTMLSelectElement>("city-a"),
   cityB: $<HTMLSelectElement>("city-b"),
@@ -118,6 +121,7 @@ let scheduled = false;
 let latestRequest = 0;
 let place: Place = dhaka;
 let pair: [Place, Place] = [dhaka, london];
+let bandSet: BandSet = "poles";
 const known: Place[] = [...presets];
 let lastLoad: (() => void) | null = null;
 let exportUrls: string[] = [];
@@ -316,6 +320,7 @@ const sound: Record<TrackKind, [string, string][]> = {
 
 function describeSound(track: ClimateTrack) {
   let rows = sound[track.kind];
+  if (track.kind === "zones" && track.bands) rows = [["Left", track.bands[0]], ["Centre", track.bands[1]], ["Right", track.bands[2]], ...rows.slice(3)];
   if (track.kind === "compare" && track.places) rows = [["Left ear", track.places[0].name], ["Right ear", track.places[1].name], ...rows.slice(2)];
   if (track.scan?.layer === "image") rows = [["Sweep", "left to right"], ["Higher", "warmer colour, brighter"], ["More notes", "more detail and colour"]];
   page.mapping.innerHTML = "";
@@ -328,7 +333,7 @@ function describeSound(track: ClimateTrack) {
   }
   const scaleNotes: Partial<Record<TrackKind, string>> = {
     global: "Pitch uses one scale for the whole record, so a shorter range keeps the same notes.",
-    zones: "All three regions share one pitch scale, so the same note means the same anomaly.",
+    zones: "All three bands share one pitch scale, so the same note means the same anomaly.",
     place: "Pitch, rain and brightness each use one scale for this city's full record. Rain is the month's average daily rate.",
     compare: "Both cities share one pitch scale in °C, across the months they have in common.",
     events: "Busy days are thinned to 16 sounds so they stay clear. The chart keeps the full count.",
@@ -343,8 +348,10 @@ function valueText(track: ClimateTrack, point: ClimatePoint) {
   switch (track.kind) {
     case "global":
       return `${anomaly(point.temperature)} °C`;
-    case "zones":
-      return `Arctic ${anomaly(point.arctic)} · Tropics ${anomaly(point.tropics)} · Antarctic ${anomaly(point.antarctic)} °C`;
+    case "zones": {
+      const [first, middle, last] = track.bands ?? bandSets.poles.names;
+      return `${first} ${anomaly(point.arctic)} · ${middle} ${anomaly(point.tropics)} · ${last} ${anomaly(point.antarctic)} °C`;
+    }
     case "place":
       return `${one(point.temperature)} °C · rain ${one(point.rainfall)} mm/day · sun ${one(point.sunshine)} MJ/m²/day`;
     case "compare":
@@ -506,6 +513,7 @@ function selectTab(kind: TrackKind) {
   page.tabs[kind].scrollIntoView({ block: "nearest", inline: "nearest" });
   page.placeTools.hidden = kind !== "place";
   page.compareTools.hidden = kind !== "compare";
+  page.bandTools.hidden = kind !== "zones";
   page.scanTools.hidden = kind !== "scan";
   if (kind !== "scan") {
     page.legend.hidden = true;
@@ -527,7 +535,8 @@ function openView(kind: TrackKind): Promise<boolean> {
       return ok;
     });
   }
-  return showTrack(kind === "global" ? loadGlobal : loadZones, kind);
+  markBands();
+  return showTrack(kind === "global" ? loadGlobal : () => loadZones(bandSet), kind);
 }
 
 function openScan(): Promise<boolean> {
@@ -582,6 +591,7 @@ function currentSetup(): Setup {
   const setup: Setup = { view, sound: page.instrument.value as LeadSound, speed: Number(page.speed.value) };
   if (view === "place") setup.city = place;
   if (view === "compare") [setup.city, setup.city2] = pair;
+  if (view === "zones") setup.bands = bandSet;
   if (full && range && rangeKinds.includes(full.kind) && !isFull(full.points, range)) {
     setup.from = range.from;
     setup.to = range.to;
@@ -615,11 +625,32 @@ async function applySetup(setup: Setup) {
     if (setup.view === "place") place = setup.city;
     if (setup.view === "compare") pair = [setup.city, setup.city2 ? addKnown(setup.city2) : pair[1]];
   }
+  if (setup.view === "zones") bandSet = setup.bands ?? "poles";
   if (setup.layer) page.layer.value = setup.layer;
   if (setup.month) page.month.value = setup.month;
   page.thenNow.checked = Boolean(setup.then);
   pendingRange = setup.from != null && setup.to != null ? { from: setup.from, to: setup.to } : null;
   return openView(setup.view);
+}
+
+function markBands() {
+  for (const button of page.bandList.querySelectorAll<HTMLButtonElement>("button")) button.setAttribute("aria-pressed", String(button.dataset.set === bandSet));
+}
+
+for (const set of bandOrder) {
+  const item = document.createElement("li");
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.set = set;
+  button.textContent = bandSets[set].label;
+  button.addEventListener("click", () => {
+    if (bandSet === set) return;
+    halt();
+    bandSet = set;
+    void openView("zones").then(remember);
+  });
+  item.append(button);
+  page.bandList.append(item);
 }
 
 function addKnown(target: Place) {
@@ -690,7 +721,7 @@ const chapters: Chapter[] = [
     },
   },
   {
-    setup: () => ({ view: "zones", speed: 4 }),
+    setup: () => ({ view: "zones", speed: 4, bands: "poles" }),
     captions: (track) => {
       const recent = findingsFor({ ...track, points: track.points.slice(fromYear(track, 1980)) });
       const fastest = recent.find((item) => item.label === "Fastest warming")?.value ?? "";
