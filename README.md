@@ -59,7 +59,9 @@ NASA's GISTEMP server cannot be fetched directly by a browser, so global and zon
 
 **GitHub Pages:** in repository Settings → Pages, choose **GitHub Actions**. `.github/workflows/deploy.yml` refreshes NASA data, builds, and publishes on pushes to `main`.
 
-**Netlify, Cloudflare Pages, or Vercel:** use `npm run build` and publish `dist`.
+**Vercel:** import this GitHub repository, select `main`, and use Vite, `npm ci`, `npm run build`, output `dist`, and root `./`. Future pushes to `main` deploy automatically. See the [developer guide](docs/DEVELOPMENT.md) for deployment and offline-update details.
+
+**Netlify or Cloudflare Pages:** use `npm run build` and publish `dist`.
 
 The Vite base is relative (`./`) so the generated assets and offline worker stay under the repository's GitHub Pages path.
 

@@ -3,27 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#06140e" />
+    <meta name="theme-color" content="#06141B" />
     <meta name="description" content="Hear 146 years of global warming and your own city's climate, made from NASA data." />
     <title>Earth in Sound</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌍</text></svg>" />
   </head>
   <body>
+    <a class="skip" href="#panel">Skip to player</a>
     <header class="wrap">
+      <p class="eyebrow">Our changing planet</p>
       <h1>Earth in Sound</h1>
+      <p class="tag">Explore NASA data. Hear Earth change.</p>
     </header>
 
     <p id="connection" class="connection wrap" hidden>Offline · using saved data</p>
 
     <main class="wrap">
       <nav class="tabs" role="tablist" aria-label="Tracks">
-        <button role="tab" id="tab-global" aria-selected="true" aria-controls="panel" tabindex="0">Planet since 1880</button>
-        <button role="tab" id="tab-zones" aria-selected="false" aria-controls="panel" tabindex="-1">Poles vs Tropics</button>
-        <button role="tab" id="tab-place" aria-selected="false" aria-controls="panel" tabindex="-1">My Place</button>
-        <button role="tab" id="tab-events" aria-selected="false" aria-controls="panel" tabindex="-1">Earth right now</button>
+        <button role="tab" id="tab-global" aria-selected="true" aria-controls="panel" tabindex="0">Planet</button>
+        <button role="tab" id="tab-zones" aria-selected="false" aria-controls="panel" tabindex="-1">Poles</button>
+        <button role="tab" id="tab-place" aria-selected="false" aria-controls="panel" tabindex="-1">Places</button>
+        <button role="tab" id="tab-events" aria-selected="false" aria-controls="panel" tabindex="-1">Events</button>
       </nav>
 
-      <section id="panel" role="tabpanel">
+      <section id="panel" role="tabpanel" tabindex="0">
         <div id="place-tools" class="place-tools" hidden>
           <form id="search" class="search" autocomplete="off">
             <label for="q" class="sr-only">Search a city</label>
@@ -45,7 +48,7 @@
             <span id="now-value"></span>
           </div>
           <label class="ctl">
-            <select id="speed">
+            <select id="speed" aria-label="Speed">
               <option value="0.5">0.5×</option>
               <option value="1" selected>1×</option>
               <option value="2">2×</option>
@@ -53,7 +56,7 @@
             </select>
           </label>
           <label id="instrument-control" class="ctl" aria-label="Instrument">
-            <select id="instrument">
+            <select id="instrument" aria-label="Instrument">
               <option value="glass" selected>Glass</option>
               <option value="piano">Piano</option>
               <option value="pad">Pad</option>
@@ -62,7 +65,7 @@
           </label>
           <label class="ctl"><input type="checkbox" id="loop" /> Loop</label>
           <label class="ctl"><input type="checkbox" id="narrate" /> Voice</label>
-          <label class="ctl" aria-label="Volume">🔊 <input type="range" id="vol" min="-40" max="0" value="-6" /></label>
+          <label class="ctl" aria-label="Volume">🔊 <input type="range" id="vol" aria-label="Volume" min="-40" max="0" value="-6" /></label>
           <button id="record" class="ghost record" disabled>⏺ Record</button>
           <a id="download" class="download" hidden>⬇ Save</a>
         </div>

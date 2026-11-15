@@ -1,7 +1,8 @@
 const cachePrefix = "earth-in-sound-";
-const cacheName = `${cachePrefix}v4`;
+const cacheName = `${cachePrefix}__APP_VERSION__`;
 const examplePlaces = ["new-york", "london", "lagos", "delhi", "kathmandu", "dhaka", "tokyo", "sao-paulo", "sydney"];
 const startupFiles = [
+  "./fonts/manrope-latin-wght-normal.woff2",
   "./data/gistemp.json",
   "./data/zones.json",
   "./data/eonet.json",
@@ -58,7 +59,7 @@ async function freshOrSaved(request, timeoutMs) {
     if (response.ok) cache.put(request, response.clone());
     return response;
   } catch (problem) {
-    const saved = await cache.match(request, { ignoreSearch: request.mode === "navigate" });
+    const saved = await cache.match(request, { ignoreSearch: request.mode === "navigate", ignoreVary: true });
     if (saved) return saved;
     if (request.mode === "navigate") {
       const homePage = await cache.match(new URL("./index.html", self.registration.scope));
@@ -70,7 +71,7 @@ async function freshOrSaved(request, timeoutMs) {
 
 async function savedOrFresh(request) {
   const cache = await caches.open(cacheName);
-  const saved = await cache.match(request);
+  const saved = await cache.match(request, { ignoreVary: true });
   if (saved) return saved;
   const response = await fetch(request);
   if (response.ok) cache.put(request, response.clone());

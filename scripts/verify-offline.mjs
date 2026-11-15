@@ -5,9 +5,11 @@ import { runInNewContext } from "node:vm";
 const dist = new URL("../dist/", import.meta.url);
 const markup = await readFile(new URL("index.html", dist), "utf8");
 const workerCode = await readFile(new URL("offline-worker.js", dist), "utf8");
+assert.ok(!workerCode.includes("__APP_VERSION__"), "worker version was not stamped by the build");
 const listeners = new Map();
 const stored = new Map();
 let online = true;
+const deleted = [];
 
 const keyFor = (request) => String(request?.url ?? request);
 const responseFor = async (url) => {
@@ -48,7 +50,7 @@ const context = {
   caches: {
     async open() { return cache; },
     async keys() { return ["earth-in-sound-v3", "another-app-v1"]; },
-    async delete() { return true; },
+    async delete(name) { deleted.push(name); return true; },
   },
   self: {
     registration: { scope: "https://example.test/earth-in-sound/" },
@@ -71,7 +73,7 @@ for (const path of assetPaths) {
   const url = new URL(path, context.self.registration.scope).href;
   assert.ok(stored.has(url), `first visit did not cache ${path}`);
 }
-for (const required of ["data/gistemp.json", "data/zones.json", "data/eonet.json", "data/places/dhaka.json"]) {
+for (const required of ["data/gistemp.json", "data/zones.json", "data/eonet.json", "data/places/dhaka.json", "fonts/manrope-latin-wght-normal.woff2"]) {
   assert.ok(stored.has(new URL(required, context.self.registration.scope).href), `first visit did not cache ${required}`);
 }
 
@@ -85,3 +87,9 @@ assert.match(await (await offlineResponse).text(), /Earth in Sound/);
 
 console.log(`✓ first-visit cache includes ${assetPaths.length} hashed assets and all bundled track data`);
 console.log("✓ offline navigation reopens the cached app at the GitHub Pages base path");
+
+let activation;
+listeners.get("activate")({ waitUntil(promise) { activation = promise; } });
+await activation;
+assert.deepEqual(deleted, ["earth-in-sound-v3"], "activation must remove only old app caches");
+console.log("✓ local font cached, build version stamped, and unrelated caches preserved");

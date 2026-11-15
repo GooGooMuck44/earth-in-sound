@@ -27,7 +27,7 @@ export class ClimateChart {
   }
 
   private sizeForContainer() {
-    const width = this.container.clientWidth;
+    const width = this.container.clientWidth - 2 * parseFloat(getComputedStyle(this.container).paddingLeft) - 2;
     return { width, height: Math.max(220, Math.min(380, Math.round(width * 0.42))) };
   }
 
@@ -38,6 +38,7 @@ export class ClimateChart {
     const warmColor = themeColor("--temp");
     const axisStyle = {
       stroke: themeColor("--muted"),
+      font: "12px Manrope, sans-serif",
       grid: { stroke: themeColor("--grid"), width: 1 },
       ticks: { show: false },
     };
@@ -89,8 +90,8 @@ export class ClimateChart {
         series: [
           {},
           { label: "Arctic", stroke: themeColor("--arctic"), width: 2 },
-          { label: "Tropics", stroke: themeColor("--tropics"), width: 2 },
-          { label: "Antarctic", stroke: themeColor("--antarctic"), width: 1.5 },
+          { label: "Tropics", stroke: themeColor("--tropics"), width: 2, dash: [8, 4] },
+          { label: "Antarctic", stroke: themeColor("--antarctic"), width: 2, dash: [3, 4] },
         ],
       };
     } else {

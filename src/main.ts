@@ -398,7 +398,7 @@ for (const [kind, tab] of Object.entries(page.tabs)) {
 
 document.addEventListener("keydown", (event) => {
   const typingTarget = (event.target as HTMLElement).tagName;
-  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON"].includes(typingTarget)) return;
+  if (["INPUT", "SELECT", "TEXTAREA", "BUTTON", "A"].includes(typingTarget)) return;
   if (event.code === "Space") {
     event.preventDefault();
     togglePlay();
@@ -461,7 +461,19 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}offline-worker.js`).catch((problem) => console.error(problem));
+  // Refresh a returning tab once the new shell is fully cached and activated.
+  const returningVisitor = Boolean(navigator.serviceWorker.controller);
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (returningVisitor && !refreshing) {
+      refreshing = true;
+      location.reload();
+    }
+  });
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}offline-worker.js`, { updateViaCache: "none" })
+    .then((registration) => {
+      window.addEventListener("online", () => void registration.update().catch(console.error));
+    }).catch(console.error);
 }
 
 const startingAddress = new URLSearchParams(location.hash.slice(1));
